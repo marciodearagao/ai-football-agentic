@@ -82,7 +82,7 @@ cd ai-football-agentic
 
 python -m venv .venv
 source .venv/Scripts/activate
-pip install -e .
+python -m pip install -c constraints.txt -e .
 
 cp .env.example .env
 ```
@@ -118,9 +118,12 @@ The launcher starts the local FastAPI server, opens
 Install the development dependency and run the suite:
 
 ```bash
-pip install -e '.[dev]'
+python -m pip install -c constraints.txt -e '.[dev]'
 pytest
 ```
+
+`constraints.txt` records the direct dependency versions validated for this
+release while `pyproject.toml` remains the project's dependency declaration.
 
 Run the reproducible, provider-free calibration diagnostic with:
 
