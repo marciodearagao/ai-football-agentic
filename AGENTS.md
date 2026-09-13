@@ -1,0 +1,6 @@
+- Implement only the current roadmap step.
+- Follow the files under `/docs`.
+- Do not add future features.
+- Do not add dependencies unless required.
+- Keep the architecture simple.
+- Run tests before considering a step complete.

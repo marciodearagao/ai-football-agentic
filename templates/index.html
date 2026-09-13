@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Football Agentic</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
+</head>
+<body>
+    <main class="game-shell" aria-live="polite">
+        <header class="masthead">
+            <div>
+                <p class="eyebrow">Match Lab · v{{ version }}</p>
+                <h1>AI Football Agentic</h1>
+            </div>
+            <div id="groq-status" class="provider-status status-neutral">Groq: Checking…</div>
+        </header>
+
+        <section class="scoreboard" aria-labelledby="match-title">
+            <h2 id="match-title" class="sr-only">Current match</h2>
+            <div class="team team-a">
+                <span id="team-a-name" class="team-name">AI United</span>
+                <span id="team-a-score" class="score">0</span>
+            </div>
+            <div class="score-divider">–</div>
+            <div class="team team-b">
+                <span id="team-b-name" class="team-name">Neural FC</span>
+                <span id="team-b-score" class="score">0</span>
+            </div>
+            <div id="match-clock" class="match-clock">0'</div>
+            <p id="match-period" class="match-period">Ready for kickoff</p>
+        </section>
+
+        <section class="timeline" aria-label="Match progress">
+            <div class="timeline-track"><span id="timeline-progress"></span></div>
+            <div class="timeline-labels">
+                <span>0</span><span>25</span><span>45+5</span><span>70</span><span>90+5</span>
+            </div>
+        </section>
+
+        <section class="team-details" aria-label="Team status">
+            <div class="detail-heading">Match data</div>
+            <div class="detail-row">
+                <span>Energy</span>
+                <div class="energy-cell">
+                    <strong id="team-a-energy-text">100%</strong>
+                    <div class="energy-track"><span id="team-a-energy-bar"></span></div>
+                </div>
+                <div class="energy-cell">
+                    <strong id="team-b-energy-text">100%</strong>
+                    <div class="energy-track"><span id="team-b-energy-bar"></span></div>
+                </div>
+            </div>
+            <div class="detail-row">
+                <span>Tactic</span>
+                <strong id="team-a-tactic">BALANCED</strong>
+                <strong id="team-b-tactic">BALANCED</strong>
+            </div>
+        </section>
+
+        <div class="match-columns">
+            <section class="panel events-panel">
+                <h2>Match events</h2>
+                <ol id="event-list" class="event-list">
+                    <li class="empty-state">The match has not started.</li>
+                </ol>
+            </section>
+
+            <section class="panel decisions-panel">
+                <h2>Agent decisions</h2>
+                <div id="decision-list" class="decision-list">
+                    <p class="empty-state">Decisions will appear after the first block.</p>
+                </div>
+            </section>
+        </div>
+
+        <section class="usage-strip" aria-label="AI usage">
+            <strong>AI Usage</strong>
+            <span id="usage-summary">0 calls · 0 tokens · $0.000000</span>
+        </section>
+
+        <p id="action-error" class="action-error" role="alert" hidden></p>
+        <div class="action-area">
+            <label class="pause-control" for="pause-at-breaks">
+                <input id="pause-at-breaks" type="checkbox" checked>
+                <span>Pause at breaks</span>
+            </label>
+            <p id="break-countdown" class="break-countdown" aria-live="polite" hidden></p>
+            <div class="match-actions">
+                <button id="match-action" type="button" disabled>LOADING…</button>
+                <div id="manage-team-area" class="manage-team-area" hidden>
+                    <button id="manage-team" class="secondary-action" type="button" disabled title="Available in a future version.">MANAGE TEAM</button>
+                    <small>Available in a future version.</small>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script src="{{ url_for('static', path='/js/app.js') }}" defer></script>
+</body>
+</html>

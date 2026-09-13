@@ -1,0 +1,45 @@
+from enum import Enum
+
+
+class TeamTactic(str, Enum):
+    ATTACK = "ATTACK"
+    BALANCED = "BALANCED"
+    DEFEND = "DEFEND"
+
+
+class FootballerBehavior(str, Enum):
+    ATTACK = "ATTACK"
+    SUPPORT = "SUPPORT"
+    PRESS = "PRESS"
+    CONSERVE_ENERGY = "CONSERVE_ENERGY"
+
+
+class MatchEventType(str, Enum):
+    GOAL = "GOAL"
+    CHANCE = "CHANCE"
+    TACTICAL_CHANGE = "TACTICAL_CHANGE"
+    ENERGY_WARNING = "ENERGY_WARNING"
+
+
+class MatchPhase(str, Enum):
+    NOT_STARTED = "NOT_STARTED"
+    FIRST_BLOCK = "FIRST_BLOCK"
+    FIRST_HYDRATION = "FIRST_HYDRATION"
+    SECOND_BLOCK = "SECOND_BLOCK"
+    HALF_TIME = "HALF_TIME"
+    THIRD_BLOCK = "THIRD_BLOCK"
+    SECOND_HYDRATION = "SECOND_HYDRATION"
+    FOURTH_BLOCK = "FOURTH_BLOCK"
+    FULL_TIME = "FULL_TIME"
+
+
+class BlockAdvantage(str, Enum):
+    TEAM_A_ADVANTAGE = "TEAM_A_ADVANTAGE"
+    TEAM_B_ADVANTAGE = "TEAM_B_ADVANTAGE"
+    BALANCED = "BALANCED"
+
+
+class MatchSituation(str, Enum):
+    WINNING = "WINNING"
+    DRAWING = "DRAWING"
+    LOSING = "LOSING"
