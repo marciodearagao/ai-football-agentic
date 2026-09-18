@@ -5,32 +5,148 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AI Football Agentic</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/match-visualizer.css') }}">
 </head>
-<body>
+<body class="match-setup">
     <main class="game-shell" aria-live="polite">
         <header class="masthead">
             <div>
                 <p class="eyebrow">Match Lab · v{{ version }}</p>
                 <h1>AI Football Agentic</h1>
             </div>
-            <div id="groq-status" class="provider-status status-neutral">Groq: Checking…</div>
+            <div id="provider-status" class="provider-status status-neutral" data-provider-status>Provider: Checking…</div>
         </header>
+
+        <section id="team-selection" class="team-selection" aria-labelledby="team-selection-title">
+            <h2 id="team-selection-title">Choose Your Team</h2>
+            <p>Pick one of the two clubs before kickoff.</p>
+            <div id="team-options" class="team-options" aria-live="polite">
+                <p class="empty-state">Loading teams...</p>
+            </div>
+        </section>
+
+        <section class="management-summary" aria-label="Pre-match management">
+            <div class="management-matchup" aria-label="Selected teams">
+                <div>
+                    <span>Your Team</span>
+                    <strong id="management-your-team">Not selected</strong>
+                </div>
+                <span class="management-versus">VS</span>
+                <div>
+                    <span>Opponent</span>
+                    <strong id="management-opponent">Not selected</strong>
+                </div>
+            </div>
+
+            <section class="manager-controls management-controls" data-manager-controls aria-labelledby="management-controls-title" aria-hidden="true">
+                <h2 id="management-controls-title">Human Manager Tactic</h2>
+                <p class="assistant-recommendation" data-assistant-recommendation>AI Assistant recommendation pending.</p>
+                <div class="tactic-options" aria-label="Choose your team tactic">
+                    <button type="button" class="tactic-option" data-tactic="ATTACK">ATTACK</button>
+                    <button type="button" class="tactic-option" data-tactic="BALANCED">BALANCED</button>
+                    <button type="button" class="tactic-option" data-tactic="DEFEND">DEFEND</button>
+                </div>
+            </section>
+
+            <div class="management-start">
+                <p>Select your club and tactic, then enter the Match Center.</p>
+                <p id="management-action-error" class="action-error" data-action-error role="alert" hidden></p>
+                <button id="setup-action" type="button" disabled>CHOOSE A TEAM</button>
+            </div>
+        </section>
+    </main>
+
+    <section id="match-center" class="match-center" role="dialog" aria-modal="true" aria-label="Match Center" aria-hidden="true" hidden>
+    <div class="match-center-surface" aria-live="polite">
+        <header class="match-center-header">
+            <div class="match-center-banner">
+                <strong>Match Center</strong>
+                <div id="match-provider-status" class="provider-status status-neutral" data-provider-status>Provider: Checking…</div>
+            </div>
 
         <section class="scoreboard" aria-labelledby="match-title">
             <h2 id="match-title" class="sr-only">Current match</h2>
             <div class="team team-a">
-                <span id="team-a-name" class="team-name">AI United</span>
+                <div class="team-identity">
+                    <span id="team-a-role" class="team-role">Available Team</span>
+                    <span id="team-a-name" class="team-name">AI United</span>
+                </div>
                 <span id="team-a-score" class="score">0</span>
             </div>
             <div class="score-divider">–</div>
             <div class="team team-b">
-                <span id="team-b-name" class="team-name">Neural FC</span>
+                <div class="team-identity">
+                    <span id="team-b-role" class="team-role">Available Team</span>
+                    <span id="team-b-name" class="team-name">Neural FC</span>
+                </div>
                 <span id="team-b-score" class="score">0</span>
             </div>
             <div id="match-clock" class="match-clock">0'</div>
             <p id="match-period" class="match-period">Ready for kickoff</p>
         </section>
+        </header>
 
+        <div class="gameplay-grid">
+        <section id="match-visualizer" class="match-visualizer" aria-label="Animated match view">
+            <div class="visualizer-heading">
+                <span class="visual-team-a-name">AI United</span>
+                <span class="visual-status" aria-live="polite">Open play</span>
+                <span class="visual-team-b-name">Neural FC</span>
+            </div>
+            <div class="visual-pitch-frame">
+            <svg class="visual-pitch" viewBox="0 0 100 60" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Horizontal football field with two teams and a ball">
+                <g class="pitch-grass" aria-hidden="true">
+                    <rect class="pitch-stripe" x="0" y="0" width="12.5" height="60"></rect>
+                    <rect class="pitch-stripe" x="12.5" y="0" width="12.5" height="60"></rect>
+                    <rect class="pitch-stripe" x="25" y="0" width="12.5" height="60"></rect>
+                    <rect class="pitch-stripe" x="37.5" y="0" width="12.5" height="60"></rect>
+                    <rect class="pitch-stripe" x="50" y="0" width="12.5" height="60"></rect>
+                    <rect class="pitch-stripe" x="62.5" y="0" width="12.5" height="60"></rect>
+                    <rect class="pitch-stripe" x="75" y="0" width="12.5" height="60"></rect>
+                    <rect class="pitch-stripe" x="87.5" y="0" width="12.5" height="60"></rect>
+                </g>
+                <g aria-hidden="true">
+                    <rect class="pitch-line" x="1" y="1" width="98" height="58"></rect>
+                    <line class="pitch-line" x1="50" y1="1" x2="50" y2="59"></line>
+                    <circle class="pitch-line" cx="50" cy="30" r="9"></circle>
+                    <circle fill="#e8efcc" cx="50" cy="30" r=".7"></circle>
+                    <rect class="pitch-line" x="1" y="13" width="16" height="34"></rect>
+                    <rect class="pitch-line" x="83" y="13" width="16" height="34"></rect>
+                    <rect class="pitch-line" x="1" y="21" width="6" height="18"></rect>
+                    <rect class="pitch-line" x="93" y="21" width="6" height="18"></rect>
+                    <path class="pitch-goal" d="M1 25 H-2 V35 H1 M99 25 H102 V35 H99"></path>
+                </g>
+                <g class="visual-players"></g>
+                <g class="visual-ball" aria-hidden="true">
+                    <circle class="visual-ball-shell" r="1.55"></circle>
+                    <circle class="visual-ball-panel visual-ball-panel-center" r=".5"></circle>
+                    <circle class="visual-ball-panel" cx="-.82" cy="-.62" r=".28"></circle>
+                    <circle class="visual-ball-panel" cx=".82" cy="-.62" r=".28"></circle>
+                    <circle class="visual-ball-panel" cx="-.72" cy=".75" r=".28"></circle>
+                    <circle class="visual-ball-panel" cx=".72" cy=".75" r=".28"></circle>
+                </g>
+            </svg>
+            </div>
+        </section>
+
+        <div class="match-sidebars">
+            <section class="panel events-panel">
+                <h2>Match events</h2>
+                <ol id="event-list" class="event-list">
+                    <li class="empty-state">The match has not started.</li>
+                </ol>
+            </section>
+
+            <section class="panel decisions-panel">
+                <h2>Match decisions</h2>
+                <div id="decision-list" class="decision-list">
+                    <p class="empty-state">Decisions will appear after the first block.</p>
+                </div>
+            </section>
+        </div>
+        </div>
+
+        <footer class="match-footer">
         <section class="timeline" aria-label="Match progress">
             <div class="timeline-track"><span id="timeline-progress"></span></div>
             <div class="timeline-labels">
@@ -38,6 +154,8 @@
             </div>
         </section>
 
+        <div class="command-grid">
+        <div class="manager-deck">
         <section class="team-details" aria-label="Team status">
             <div class="detail-heading">Match data</div>
             <div class="detail-row">
@@ -58,43 +176,40 @@
             </div>
         </section>
 
-        <div class="match-columns">
-            <section class="panel events-panel">
-                <h2>Match events</h2>
-                <ol id="event-list" class="event-list">
-                    <li class="empty-state">The match has not started.</li>
-                </ol>
-            </section>
-
-            <section class="panel decisions-panel">
-                <h2>Agent decisions</h2>
-                <div id="decision-list" class="decision-list">
-                    <p class="empty-state">Decisions will appear after the first block.</p>
-                </div>
-            </section>
+        <section id="manager-controls" class="manager-controls" data-manager-controls aria-labelledby="manager-controls-title" aria-hidden="true">
+            <h2 id="manager-controls-title">Your Tactic</h2>
+            <p id="assistant-recommendation" class="assistant-recommendation" data-assistant-recommendation>AI Assistant recommendation pending.</p>
+            <div class="tactic-options" aria-label="Choose your team tactic">
+                <button type="button" class="tactic-option" data-tactic="ATTACK">ATTACK</button>
+                <button type="button" class="tactic-option" data-tactic="BALANCED">BALANCED</button>
+                <button type="button" class="tactic-option" data-tactic="DEFEND">DEFEND</button>
+            </div>
+        </section>
         </div>
 
+        <div class="match-command">
         <section class="usage-strip" aria-label="AI usage">
             <strong>AI Usage</strong>
             <span id="usage-summary">0 calls · 0 tokens · $0.000000</span>
         </section>
 
-        <p id="action-error" class="action-error" role="alert" hidden></p>
+        <p id="action-error" class="action-error" data-action-error role="alert" hidden></p>
         <div class="action-area">
             <label class="pause-control" for="pause-at-breaks">
                 <input id="pause-at-breaks" type="checkbox" checked>
                 <span>Pause at breaks</span>
             </label>
-            <p id="break-countdown" class="break-countdown" aria-live="polite" hidden></p>
+            <p id="break-countdown" class="break-countdown" aria-live="polite" aria-hidden="true"></p>
             <div class="match-actions">
                 <button id="match-action" type="button" disabled>LOADING…</button>
-                <div id="manage-team-area" class="manage-team-area" hidden>
-                    <button id="manage-team" class="secondary-action" type="button" disabled title="Available in a future version.">MANAGE TEAM</button>
-                    <small>Available in a future version.</small>
-                </div>
             </div>
         </div>
-    </main>
+        </div>
+        </div>
+        </footer>
+    </div>
+    </section>
+    <script src="{{ url_for('static', path='/js/match-visualizer.js') }}" defer></script>
     <script src="{{ url_for('static', path='/js/app.js') }}" defer></script>
 </body>
 </html>

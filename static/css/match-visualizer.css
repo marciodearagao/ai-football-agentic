@@ -1,0 +1,158 @@
+.match-visualizer {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 6px 10px 9px;
+    color: #f5f2d8;
+    background: #0b2f21;
+}
+
+.visualizer-heading {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 5px;
+    font-size: .78rem;
+    font-weight: 900;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.visual-team-b-name { text-align: right; }
+.visual-status { color: #f1b83b; text-align: center; }
+
+.visual-pitch-frame { display: contents; }
+
+.visual-pitch {
+    display: block;
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: visible;
+    background: #278957;
+    border: 3px solid #dce8bf;
+    box-shadow: 4px 4px 0 rgb(0 0 0 / 35%);
+}
+
+.pitch-stripe:nth-child(even) { fill: #238052; }
+.pitch-line { fill: none; stroke: #e8efcc; stroke-width: .55; vector-effect: non-scaling-stroke; }
+.pitch-goal { fill: none; stroke: #e8efcc; stroke-width: .75; vector-effect: non-scaling-stroke; }
+
+.visual-player,
+.visual-ball {
+    transform-box: view-box;
+    transform-origin: 0 0;
+    vector-effect: non-scaling-stroke;
+}
+
+.visual-player { stroke: #0b2118; stroke-width: .55; }
+.visual-player.team_a { fill: #f1b83b; }
+.visual-player.team_b { fill: #d7e6ff; }
+.visual-players { opacity: 0; transition: opacity 180ms ease; }
+.match-visualizer.is-ready .visual-players { opacity: 1; }
+.visual-ball-shell { fill: #fff; stroke: #080808; stroke-width: .38; }
+.visual-ball-panel { fill: #111; stroke: none; }
+.visual-ball-panel-center { fill: #171717; }
+
+.match-visualizer[data-mode="pressure"] .visual-ball,
+.match-visualizer[data-mode="chance"] .visual-ball {
+    filter: drop-shadow(0 0 2px #fff3a1);
+}
+
+.match-visualizer[data-mode="chance"] .visual-status,
+.match-visualizer[data-mode="goal"] .visual-status {
+    color: #fff19d;
+}
+
+.match-visualizer[data-mode="goal"] .visual-ball {
+    filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 4px #f1b83b);
+}
+
+.match-visualizer[data-mode="goal"] .visual-player[data-role="ATTACKER"] {
+    filter: drop-shadow(0 0 1.5px #fff19d);
+}
+
+.visual-pitch.goal-flash { animation: goal-flash 900ms ease-out; }
+
+@keyframes goal-flash {
+    0%, 100% { filter: none; }
+    35% { filter: brightness(1.55) saturate(1.25); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .visual-pitch.goal-flash { animation: none; }
+}
+
+@media (max-width: 650px) {
+    .match-visualizer { padding: 10px 8px 12px; }
+    .visualizer-heading { gap: 6px; font-size: .66rem; }
+}
+
+@media (max-width: 900px) {
+    .visual-pitch {
+        height: auto;
+        min-height: 240px;
+        aspect-ratio: 5 / 3;
+    }
+}
+
+@media (min-width: 901px) and (max-width: 1599px) {
+    .visual-pitch-frame {
+        display: block;
+        flex: none;
+        width: 100%;
+        min-width: 0;
+        overflow: visible;
+    }
+
+    .visual-pitch {
+        flex: none;
+        width: 100%;
+        height: auto;
+        max-width: 100%;
+        max-height: none;
+        aspect-ratio: 5 / 3;
+    }
+}
+
+/* Compact Match Center: the pitch frame follows the available match height. */
+@media (min-width: 901px) and (max-height: 820px) {
+    .match-visualizer {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        justify-items: center;
+        min-height: 0;
+        padding: 0;
+        background: transparent;
+    }
+
+    .visualizer-heading {
+        width: 100%;
+        margin: 0;
+        padding: 6px 10px 5px;
+        color: #f5f2d8;
+        background: #0b2f21;
+    }
+
+    .visual-pitch-frame {
+        display: block;
+        width: auto;
+        height: 100%;
+        max-width: 100%;
+        min-height: 0;
+        aspect-ratio: 5 / 3;
+        overflow: hidden;
+    }
+
+    .visual-pitch {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        max-width: none;
+        max-height: none;
+        aspect-ratio: 5 / 3;
+    }
+}

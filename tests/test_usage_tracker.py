@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from app.usage.models import AgentType, UsageRecord, make_agent_id
+from app.usage.models import AgentType, ProviderName, UsageRecord, make_agent_id
 from app.usage.tracker import UsageTracker
 
 
@@ -35,6 +35,7 @@ def test_valid_usage_record_creation() -> None:
     assert record.total_tokens == 120
     assert record.cached_tokens == 10
     assert record.used_fallback is False
+    assert record.provider is ProviderName.GROQ
 
 
 @pytest.mark.parametrize(
@@ -65,6 +66,7 @@ def test_cached_tokens_are_optional() -> None:
 
 
 def test_agent_ids_are_simple_and_deterministic() -> None:
+    assert make_agent_id(AgentType.ASSISTANT_COACH, "AI United") == "assistant:ai-united"
     assert make_agent_id(AgentType.COACH, "AI United") == "coach:ai-united"
     assert (
         make_agent_id(AgentType.COGNITIVE_FOOTBALLER, "AI United Player 1")
@@ -223,3 +225,33 @@ def test_malformed_provider_usage_does_not_break_tracking() -> None:
     assert record.total_tokens == 99
     assert record.cached_tokens is None
     assert record.estimated_cost is None
+
+
+def test_gemini_usage_fields_and_provider_are_normalized() -> None:
+    tracker = UsageTracker()
+
+    record = tracker.record_provider_attempt(
+        agent_id="coach:ai-united",
+        agent_type=AgentType.COACH,
+        provider=ProviderName.GEMINI,
+        model="gemini-3.1-flash-lite",
+        used_fallback=False,
+        response_metadata={
+            "provider": "GEMINI",
+            "model": "gemini-3.1-flash-lite",
+            "usage": {
+                "prompt_token_count": 12,
+                "candidates_token_count": 4,
+                "total_token_count": 16,
+                "cached_content_token_count": 2,
+            },
+        },
+    )
+
+    assert record.provider is ProviderName.GEMINI
+    assert record.input_tokens == 12
+    assert record.output_tokens == 4
+    assert record.total_tokens == 16
+    assert record.cached_tokens == 2
+    assert record.estimated_cost is None
+    assert tracker.totals_for_provider(ProviderName.GEMINI).calls == 1

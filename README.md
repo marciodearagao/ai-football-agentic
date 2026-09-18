@@ -1,80 +1,74 @@
 # AI Football Agentic
 
-AI Football Agentic is a small browser-based agentic football simulation
-inspired by classic management games. Its Match Engine is intentionally
-probabilistic: agents choose tactics and behavior, while the engine resolves
-chances, goals, energy changes, and the final result.
+AI Football Agentic is a small browser-based football simulation inspired by
+classic management games. Agents choose tactics and abstract behavior, while a
+probabilistic Match Engine remains authoritative over chances, goals, energy,
+and the final result.
 
-It is a compact demonstration, not a realistic football simulator.
+## Project status
 
-## Current version
+`v0.2.0` is a standalone, local football-management simulation between two
+fictional teams. Choose your team and tactic in Management Mode, then follow
+the resolved match in the responsive Match Center.
 
-**Current version: 0.1.0**
+The Human Manager controls one team's tactic. An AI Assistant Coach may
+recommend a tactic, while the opposing CoachAgent remains autonomous. Coaching
+uses validated, read-only match-context tools with Groq as primary provider,
+Gemini as optional fallback, and deterministic local fallbacks when providers
+are unavailable.
 
-Version 0.1.0 contains one standalone match between two fictional teams,
-agentic Coach and Footballer decisions, four simulation blocks presented over
-approximately four minutes, and in-memory AI token and cost tracking.
-
-## Architecture
+## Current architecture
 
 ```text
-Human Manager
-      ↓
 Web UI / FastAPI
-      ↓
+        |
 Match Controller
-      ↓
-Coach / Footballer decisions
-      ↓
-Match Engine
-      ↓
+        |
+Coach and Footballer decisions
+        |
+Authoritative Match Engine
+        |
 Presentation layer
 ```
 
-Agents choose behavior. The Match Engine resolves consequences.
+The application uses Groq as the primary provider for structured AI Assistant,
+opponent Coach, and CognitiveFootballer decisions.
+Assistant and opponent coaching use Gemini as a single secondary provider when
+Groq fails. Pydantic validates every final decision before it can affect the
+simulation. If both providers fail, deterministic fallbacks keep the match
+playable.
 
-Each team has one CoachAgent and one CognitiveFootballer powered by Groq. The
-other ten Footballers use deterministic ReactiveFootballer or
-TacticalFootballer logic. Across four blocks, the theoretical maximum is 16
-Groq calls: eight Coach decisions and eight CognitiveFootballer decisions.
-Invalid, unavailable, or unconfigured AI responses use deterministic fallback
-logic, so the match remains playable without successful provider calls.
+Assistant and opponent coaching use local function calling with both supported
+providers. The application executes five read-only match-context tools and
+returns their results to the selected model; these tools cannot mutate the
+match or bypass the Human Manager.
 
-See [GAME_SPEC.md](docs/GAME_SPEC.md) for the technical game rules and
-[ARCHITECTURE.md](docs/ARCHITECTURE.md) for component responsibilities.
+The presentation layer reveals already resolved events. It does not calculate
+goals, change probabilities, or run agent decisions during playback.
+Its 2D field uses predefined SVG animation patterns and can be replaced without
+changing the Match Engine, agents, or match orchestration. The Match Center
+keeps the score, field, event feed, decisions, controls, runtime provider
+status, and presentation-only lifecycle milestones together without changing
+resolved match outcomes.
 
-## Groq integration
+See [`docs/GAME_SPEC.md`](docs/GAME_SPEC.md) for game rules and
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for component responsibilities.
 
-The current model is `qwen/qwen3.8-27b`. Requests use:
+## Technology stack
 
-```python
-response_format={"type": "json_object"}
-reasoning_format="hidden"
-```
-
-Prompts require a single JSON object. Pydantic validates the exact fields and
-allowed enum values before a decision can affect the match; rejected responses
-fall back to deterministic Python logic.
-
-The UI tracks API calls, input tokens, output tokens, total tokens, cached tokens
-when available, and estimated cost. Estimated cost is calculated from configured
-model pricing and is not an authoritative billing invoice.
-
-A manual live-match example used 16 calls, about 4.8K tokens, and approximately
-$0.005. Actual usage and cost vary by match and provider output.
-
-## Match Engine
-
-The Match Engine combines high-level team skill, energy, tactics, Footballer
-behavior, and controlled randomness. Agents influence these inputs but never
-directly select goals or results.
-
-The v0.1.0 goal model was calibrated using repeated 1,000-match seeded
-simulations rather than tuning from individual matches.
+- Python 3.12+
+- FastAPI
+- Pydantic
+- Groq SDK
+- Google Gen AI SDK
+- Jinja2
+- HTML, CSS, and vanilla JavaScript
+- pytest
+- python-dotenv
 
 ## Setup
 
-Python 3.12 or newer is required. From Bash or Git Bash on Windows:
+From Bash or Git Bash on Windows:
 
 ```bash
 git clone <repository-url>
@@ -93,15 +87,12 @@ On Linux or macOS, activate the environment with:
 source .venv/bin/activate
 ```
 
-Configure `.env` as needed:
-
-```text
-GROQ_API_KEY=
-GROQ_MODEL=qwen/qwen3.8-27b
-```
-
-Groq configuration is optional. Without it, deterministic fallbacks run the
-complete match and report no provider token usage.
+Set `GROQ_API_KEY` and `GROQ_MODEL` in the local `.env` for the primary
+provider. Gemini is an optional secondary provider: set `GEMINI_API_KEY` to
+enable it. `GEMINI_MODEL` is optional and defaults to
+`gemini-3.1-flash-lite`. `.env` is ignored by Git. If Groq fails and Gemini is
+unavailable or also fails, deterministic fallbacks keep the full match
+playable.
 
 ## Run
 
@@ -109,45 +100,29 @@ complete match and report no provider token usage.
 python run.py
 ```
 
-The launcher starts the local FastAPI server, opens
-`http://127.0.0.1:8000` in the default browser, and stops cleanly with
-`Ctrl+C`.
+The launcher serves the application at `http://127.0.0.1:8000`, opens the
+default browser, and stops with `Ctrl+C`.
 
 ## Tests and calibration
-
-Install the development dependency and run the suite:
 
 ```bash
 python -m pip install -c constraints.txt -e '.[dev]'
 pytest
 ```
 
-`constraints.txt` records the direct dependency versions validated for this
-release while `pyproject.toml` remains the project's dependency declaration.
+`pyproject.toml` and `constraints.txt` pin the direct dependency versions
+validated for this release.
 
-Run the reproducible, provider-free calibration diagnostic with:
+The provider-free seeded calibration diagnostic is available with:
 
 ```bash
 python scripts/calibrate_matches.py 1000
 ```
 
-## Screenshots
+## Current limitations
 
-Release screenshots can be placed in `docs/images/` as `match-start.png`,
-`match-live.png`, and `match-full-time.png`. They are not linked here until real
-captures are available.
-
-## Known limitations
-
-- Two fictional teams and one standalone match only.
-- No substitutions, bench, leagues, championships, or persistence.
-- No real football data.
-- No individual ball, pass, shot, tackle, or positional simulation.
-- English-only UI.
-- Agents do not communicate freely with each other.
-
-## Future direction
-
-Possible future work includes more teams and championships, substitutions and
-team management, historical ratings, richer agent interactions, and explicit
-ball or possession simulation. These are not part of v0.1.0.
+- Two fictional teams and one standalone match.
+- No substitutions, competitions, persistence, or real football data.
+- No individual passes, shots, tackles, positions, or ball physics.
+- English-only interface.
+- Local single-user application.

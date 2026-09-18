@@ -47,7 +47,7 @@ def log_provider_failure(
         details.status if details.status is not None else "unavailable",
         details.error_type,
         details.category,
-        details.message,
+        "Provider request failed; sensitive response details omitted.",
     )
     return details.category
 

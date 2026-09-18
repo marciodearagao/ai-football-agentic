@@ -104,15 +104,14 @@ def test_each_coach_is_consulted_once_before_each_block() -> None:
     assert controller.team_b_coach.decision_count == 4
     assert controller.team_a_coach.provider_call_count == 4
     assert controller.team_b_coach.provider_call_count == 4
-    assert [
-        json.loads(call["messages"][1]["content"])["phase"]
-        for call in team_a_completion.calls
-    ] == [
-        MatchPhase.FIRST_BLOCK.value,
-        MatchPhase.SECOND_BLOCK.value,
-        MatchPhase.THIRD_BLOCK.value,
-        MatchPhase.FOURTH_BLOCK.value,
-    ]
+    assert all(
+        call["tool_choice"] == "auto"
+        for call in team_a_completion.calls + team_b_completion.calls
+    )
+    assert all(
+        "team_score" not in call["messages"][1]["content"]
+        for call in team_a_completion.calls + team_b_completion.calls
+    )
 
 
 def test_tactical_change_event_is_generated_only_when_tactic_changes() -> None:

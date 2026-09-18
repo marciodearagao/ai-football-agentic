@@ -1,138 +1,109 @@
-# PRD.md
+# Product Requirements Document
 
 ## Product
 
-AI Football — v0.1.0
+AI Football Agentic - v0.2.0
+
+## Status
+
+This document defines the released product requirements for v0.2.0.
+`CURRENT_SCOPE.md` remains authoritative for scope and release status.
 
 ## Goal
 
-Build a small browser-based agentic football match between two fictional teams.
+Extend the existing small browser-based football simulation so a Human Manager
+can select and control one fictional team, receive bounded tactical advice from
+an AI Assistant Coach, and decide the human team's tactic while an AI Opponent
+Coach controls the other team.
 
-The game must feel like a simple Elifoot-style probabilistic simulation, not a detailed football simulator.
-
-The main objective is to demonstrate a practical multi-agent AI system using Python and Groq while keeping the project small enough to finish and publish.
+The project remains an abstract management simulation, not a detailed football
+or physics simulator.
 
 ## User
 
-The user acts as the `Human Manager`.
+The user is the Human Manager. Within the approved v0.2.0 scope, the Human
+Manager must be able to:
 
-In v0.1.0, the Human Manager:
+1. select one of the available fictional teams;
+2. identify the selected team and opponent clearly;
+3. receive a tactical recommendation from the AI Assistant Coach;
+4. accept or override the recommendation with a valid tactic;
+5. advance the match after making the required decision;
+6. observe already resolved match state and events;
+7. complete the match and inspect the final result.
 
-* starts the match;
-* observes the simulation;
-* reviews match state between blocks;
-* clicks `Continue` to advance the match.
+The AI Assistant Coach recommends but never makes the final human-team tactic
+decision. The AI Opponent Coach remains autonomous.
 
-The Human Manager does not make tactical changes or substitutions in v0.1.0.
+## Core Product Rules
+
+- One Human Manager controls one team.
+- Team selection uses fictional teams only.
+- Tactical choices remain `ATTACK`, `BALANCED`, or `DEFEND`.
+- Provider output is untrusted until validated.
+- Invalid or unavailable AI output uses deterministic fallback behavior.
+- The Match Engine alone resolves chances, goals, energy, and outcomes.
+- The visual layer presents resolved state and events without simulating them.
 
 ## Match Structure
 
-One match only.
+The existing four-block match remains the baseline:
 
-Two fictional teams.
+1. minutes 1-25;
+2. minutes 26-45+5;
+3. minutes 46-70;
+4. minutes 71-90+5.
 
-Four simulation blocks:
+Breaks remain presentation and interaction boundaries. Any tactical interaction
+must complete before the next block is resolved.
 
-1. 1'–25'
-2. 26'–45'+5
-3. 46'–70'
-4. 71'–90'+5
+## AI Responsibilities
 
-Pauses:
+### AI Assistant Coach
 
-* hydration break after 25';
-* half-time after first half;
-* hydration break after 70';
-* full-time after final block.
+- chooses approved read-only tools when it needs match context;
+- recommends one valid tactic and a short reason;
+- cannot apply its recommendation directly;
+- cannot request or determine a goal or result.
 
-## Core Experience
+### AI Opponent Coach
 
-The user should be able to:
+- chooses approved read-only tools when it needs match context;
+- chooses one valid opponent tactic autonomously;
+- cannot request or determine a goal or result.
 
-1. Open the application in a browser.
-2. See two fictional teams.
-3. Start the match.
-4. Watch match events appear.
-5. See the score and energy change.
-6. Observe tactical and Footballer decisions indirectly through events/state.
-7. Continue through each match block.
-8. See the final score.
-9. See AI usage statistics:
+## Presentation
 
-   * API calls;
-   * input tokens;
-   * output tokens;
-   * total tokens;
-   * estimated cost.
+The browser should clearly present:
 
-## Success Criteria
+- selected human team and opponent;
+- current score, match time, tactics, and energy;
+- AI Assistant recommendation and Human Manager choice;
+- opponent tactical decisions at the appropriate level of visibility;
+- chronological match events and final result;
+- current provider status and usage already supported by the application.
 
-v0.1.0 is complete when:
+Presentation remains simple and does not add autonomous visual players or
+unimplemented football mechanics.
 
-* a complete 90'+ match can run from start to finish;
-* Coach Agents influence tactics;
-* Footballers influence team performance;
-* Match Engine resolves outcomes probabilistically;
-* energy affects performance;
-* randomness allows plausible unexpected results;
-* Groq usage is tracked;
-* the browser shows a clear visual match experience;
-* automated tests pass;
-* the project can be published publicly.
+The current visualizer uses a horizontal SVG field and predefined movements for
+already resolved neutral, pressure, chance, and goal states. It is a replaceable
+presentation component and does not infer possession or match outcomes.
 
-## Explicitly Out of Scope
+## Acceptance Criteria
 
-v0.1.0 does not include:
+v0.2.0 delivers and tests the in-scope items while preserving these properties:
 
-* leagues;
-* championships;
-* multiple selectable teams;
-* real teams;
-* real players;
-* historical football datasets;
-* transfers;
-* contracts;
-* finances;
-* scouting;
-* training;
-* bench players;
-* substitutions;
-* injuries;
-* cards;
-* fouls;
-* penalties;
-* offsides;
-* corners;
-* explicit shots;
-* explicit passes;
-* dribbling;
-* tackles;
-* ball possession by individual Footballers;
-* field coordinates;
-* physics;
-* agent-to-agent free conversation;
-* RAG;
-* vector databases;
-* local LLMs;
-* authentication;
-* multiplayer;
-* save games;
-* LLM-as-a-judge;
-* complex agent graphs.
+- Human Manager selects and controls one team;
+- AI Assistant advice is optional and cannot override the human decision;
+- AI Opponent Coach remains autonomous;
+- deterministic fallback keeps the match playable;
+- Match Engine outcomes remain authoritative and reproducible by seed;
+- visual playback does not alter resolved state;
+- automated tests pass.
 
-## Future Direction
+## Exclusions
 
-After v0.1.0 is validated publicly, future versions may explore:
-
-* multiple teams;
-* championships;
-* historical ratings;
-* Elo-style rankings;
-* substitutions;
-* human tactical intervention;
-* explicit ball possession;
-* Footballer-to-Footballer interaction;
-* richer multi-agent orchestration;
-* free agent communication;
-* RAG-based agent discovery;
-* multilingual UI.
+The exclusions in `CURRENT_SCOPE.md` apply. Backlog candidates in
+`IDEA_BACKLOG.md` are not requirements and must not be implemented unless moved
+into the current scope through an explicit approval.

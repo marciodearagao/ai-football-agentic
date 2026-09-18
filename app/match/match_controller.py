@@ -2,6 +2,7 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel
 
+from app.agents.assistant import AssistantCoach
 from app.agents.coach import CoachAgent, CoachDecision
 from app.agents.coach_context import CoachContext
 from app.domain.enums import FootballerBehavior, MatchPhase, TeamTactic
@@ -89,18 +90,36 @@ class MatchController:
     def phase(self) -> MatchPhase:
         return self.state.phase
 
-    def start(self) -> CompletedMatchBlock:
+    def start(
+        self,
+        *,
+        team_a_tactic: TeamTactic | None = None,
+        team_b_tactic: TeamTactic | None = None,
+    ) -> CompletedMatchBlock:
         if self.phase is not MatchPhase.NOT_STARTED:
             raise InvalidMatchTransition("A match can only start once.")
-        return self._simulate_block(0)
+        return self._simulate_block(
+            0,
+            team_a_tactic=team_a_tactic,
+            team_b_tactic=team_b_tactic,
+        )
 
-    def continue_match(self) -> CompletedMatchBlock:
+    def continue_match(
+        self,
+        *,
+        team_a_tactic: TeamTactic | None = None,
+        team_b_tactic: TeamTactic | None = None,
+    ) -> CompletedMatchBlock:
         block_index = CONTINUATION_PHASES.get(self.phase)
         if block_index is None:
             raise InvalidMatchTransition(
                 f"The match cannot continue from phase {self.phase.value}."
             )
-        return self._simulate_block(block_index)
+        return self._simulate_block(
+            block_index,
+            team_a_tactic=team_a_tactic,
+            team_b_tactic=team_b_tactic,
+        )
 
     def run_to_full_time(self) -> tuple[CompletedMatchBlock, ...]:
         if self.phase is not MatchPhase.NOT_STARTED:
@@ -111,7 +130,40 @@ class MatchController:
             self.continue_match()
         return tuple(self.completed_blocks)
 
-    def _simulate_block(self, block_index: int) -> CompletedMatchBlock:
+    def request_assistant_recommendation(
+        self,
+        assistant: AssistantCoach,
+        *,
+        is_team_a: bool,
+        phase: MatchPhase,
+    ) -> CoachDecision:
+        context = CoachContext.from_match_state(
+            self.state,
+            is_team_a=is_team_a,
+            phase=phase,
+        )
+        calls_before = assistant.provider_call_count
+        metadata_before = len(assistant.response_metadata)
+        recommendation = assistant.recommend_tactic(context)
+        self._record_usage(
+            agent_id=assistant.agent_id,
+            agent_type=AgentType.ASSISTANT_COACH,
+            model=assistant.model,
+            provider_calls_before=calls_before,
+            provider_calls_after=assistant.provider_call_count,
+            metadata_before=metadata_before,
+            response_metadata=assistant.response_metadata,
+            used_fallback=assistant.last_used_fallback,
+        )
+        return recommendation
+
+    def _simulate_block(
+        self,
+        block_index: int,
+        *,
+        team_a_tactic: TeamTactic | None = None,
+        team_b_tactic: TeamTactic | None = None,
+    ) -> CompletedMatchBlock:
         block = MATCH_BLOCKS[block_index]
         team_a_coach_context = CoachContext.from_match_state(
             self.state,
@@ -123,31 +175,17 @@ class MatchController:
             is_team_a=False,
             phase=block.phase,
         )
-        team_a_calls_before = self.team_a_coach.provider_call_count
-        team_a_metadata_before = len(self.team_a_coach.response_metadata)
-        team_a_coach_decision = self.team_a_coach.choose_tactic(team_a_coach_context)
-        self._record_usage(
-            agent_id=make_agent_id(AgentType.COACH, self.team_a.name),
-            agent_type=AgentType.COACH,
-            model=self.team_a_coach.model,
-            provider_calls_before=team_a_calls_before,
-            provider_calls_after=self.team_a_coach.provider_call_count,
-            metadata_before=team_a_metadata_before,
-            response_metadata=self.team_a_coach.response_metadata,
-            used_fallback=self.team_a_coach.last_used_fallback,
+        team_a_coach_decision = self._resolve_tactic_decision(
+            self.team_a,
+            self.team_a_coach,
+            team_a_coach_context,
+            human_tactic=team_a_tactic,
         )
-        team_b_calls_before = self.team_b_coach.provider_call_count
-        team_b_metadata_before = len(self.team_b_coach.response_metadata)
-        team_b_coach_decision = self.team_b_coach.choose_tactic(team_b_coach_context)
-        self._record_usage(
-            agent_id=make_agent_id(AgentType.COACH, self.team_b.name),
-            agent_type=AgentType.COACH,
-            model=self.team_b_coach.model,
-            provider_calls_before=team_b_calls_before,
-            provider_calls_after=self.team_b_coach.provider_call_count,
-            metadata_before=team_b_metadata_before,
-            response_metadata=self.team_b_coach.response_metadata,
-            used_fallback=self.team_b_coach.last_used_fallback,
+        team_b_coach_decision = self._resolve_tactic_decision(
+            self.team_b,
+            self.team_b_coach,
+            team_b_coach_context,
+            human_tactic=team_b_tactic,
         )
         team_a_previous_tactic = self.team_a.tactic
         team_b_previous_tactic = self.team_b.tactic
@@ -242,6 +280,35 @@ class MatchController:
         self.completed_blocks.append(completed_block)
         return completed_block
 
+    def _resolve_tactic_decision(
+        self,
+        team: Team,
+        coach: CoachAgent,
+        context: CoachContext,
+        *,
+        human_tactic: TeamTactic | None,
+    ) -> CoachDecision:
+        if human_tactic is not None:
+            return CoachDecision(
+                tactic=human_tactic,
+                reason="Human Manager decision.",
+            )
+
+        calls_before = coach.provider_call_count
+        metadata_before = len(coach.response_metadata)
+        decision = coach.choose_tactic(context)
+        self._record_usage(
+            agent_id=coach.agent_id,
+            agent_type=AgentType.COACH,
+            model=coach.model,
+            provider_calls_before=calls_before,
+            provider_calls_after=coach.provider_call_count,
+            metadata_before=metadata_before,
+            response_metadata=coach.response_metadata,
+            used_fallback=coach.last_used_fallback,
+        )
+        return decision
+
     def _select_team_behaviors(
         self,
         team: Team,
@@ -306,18 +373,17 @@ class MatchController:
     ) -> None:
         if provider_calls_after <= provider_calls_before:
             return
-        metadata = (
-            response_metadata[-1]
-            if len(response_metadata) > metadata_before
-            else None
-        )
-        self.usage_tracker.record_provider_attempt(
-            agent_id=agent_id,
-            agent_type=agent_type,
-            model=model,
-            used_fallback=used_fallback,
-            response_metadata=metadata,
-        )
+        new_metadata = response_metadata[metadata_before:]
+        call_count = provider_calls_after - provider_calls_before
+        for index in range(call_count):
+            metadata = new_metadata[index] if index < len(new_metadata) else None
+            self.usage_tracker.record_provider_attempt(
+                agent_id=agent_id,
+                agent_type=agent_type,
+                model=model,
+                used_fallback=used_fallback,
+                response_metadata=metadata,
+            )
 
     @staticmethod
     def _average_energy(team: Team) -> float:

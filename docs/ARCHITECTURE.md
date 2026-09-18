@@ -1,341 +1,298 @@
-# ARCHITECTURE.md
+# Architecture
 
-## Architectural Principle
+## Status
 
-The `Match Engine` is the center of the system.
+This document records the released v0.2.0 architecture and its responsibility
+boundaries.
 
-Agents do not freely communicate with each other in v0.1.0.
+## Core Principle
 
-The Match Engine:
+The Match Engine is the single authority for match consequences. Agents and the
+Human Manager may choose inputs such as tactics and behavior, but they never
+choose goals, scores, or outcomes.
 
-1. provides state;
-2. requests decisions;
-3. validates decisions;
-4. resolves consequences;
-5. updates state.
+```text
+Decision sources
+      |
+Validation and orchestration
+      |
+Authoritative Match Engine
+      |
+Resolved state and events
+      |
+Presentation
+```
 
-## Main Components
+No second Match Engine or outcome path is allowed.
+
+## v0.1.0 Historical Baseline
+
+The published `v0.1.0` implementation contains:
+
+- one in-memory match between two fictional teams;
+- a deterministic Match Controller;
+- Groq-backed CoachAgent and CognitiveFootballer decisions;
+- deterministic fallback decision logic;
+- one seeded probabilistic Match Engine;
+- a FastAPI/Jinja2 browser interface;
+- presentation-only timed playback;
+- in-memory provider usage tracking.
+
+`v0.1.0` remains the historical public baseline. The sections below describe
+the released `v0.2.0` architecture.
+
+## Team Selection
+
+`WebMatchSession` owns the selected human side for the current in-memory match.
+It exposes the two existing teams, derives the opponent, and rejects match
+start until one side is selected. Reset after full time creates a new match and
+clears the selection.
+
+Selection does not reorder `team_a` and `team_b`, reconstruct team attributes,
+or pass a new value into the Match Engine. This preserves the existing seeded
+simulation behavior. The browser renders session state but is not the authority
+for whether a match may start.
+
+## Coaching Roles
+
+`WebMatchSession` stores the Human Manager tactic separately from the current
+resolved team tactic. Before a block, it passes the stored choice to the Match
+Controller for the selected side.
+
+The Match Controller uses that human decision without consulting the selected
+side's CoachAgent. It continues to consult the opposing CoachAgent exactly once
+for the block. `AssistantCoach` uses the same bounded context and validation
+rules to produce advice, but its output is stored only as a recommendation and
+is never applied automatically.
+
+Both coaching agents receive a decision prompt plus five local read-only tool
+schemas. The model may request score, phase, own energy, opponent energy, or
+current tactic. Application code executes requested lookups against the
+perspective-specific `CoachContext`, returns structured results to Groq, and
+validates the final response with `CoachDecision`. The context itself is not
+sent wholesale to the model.
+
+The existing CognitiveFootballers continue through their unchanged decision
+path after both team tactics have been resolved.
+
+## Footballer Decision Composition
+
+Each team currently has one `CognitiveFootballer`, three deterministic
+`TacticalFootballer` decision makers, and seven deterministic
+`ReactiveFootballer` decision makers. The CognitiveFootballer uses Groq with a
+deterministic tactical fallback; it does not make the other ten players into
+LLM agents.
+
+All 11 decision makers select only an existing abstract Footballer behavior.
+The Match Controller applies those choices to Footballers, and the authoritative
+Match Engine aggregates their bounded attack and defense modifiers. There is no
+individual-action simulation, cognitive-player allocation, or configurable
+LLM-player budget in the current architecture.
+
+## v0.2.0 Responsibility Model
 
 ```mermaid
 flowchart TD
-    HM[Human Manager] --> UI[Web UI / FastAPI]
-    UI --> MC[Match Controller]
-    MC --> CA[CoachAgent decisions]
-    MC --> FD[Footballer decision logic]
-    CA --> ME[Match Engine]
-    FD --> ME
-    CA --> G[Groq]
-    CF[CognitiveFootballer] --> G
-    FD --> CF
-    ME --> PL[Presentation layer]
-    PL --> B[Browser]
+    HM[Human Manager] --> TS[Team Selection]
+    TS --> UI[Web UI / FastAPI]
+    UI --> AC[AI Assistant Coach]
+    AC --> REC[Validated Recommendation]
+    REC --> HM
+    HM --> HD[Validated Human Tactic]
+    OC[AI Opponent Coach] --> OD[Validated Opponent Tactic]
+    HD --> MC[Match Controller]
+    OD --> MC
+    MC --> ME[Authoritative Match Engine]
+    ME --> RS[Resolved State and Events]
+    RS --> PL[Presentation Layer]
+    PL --> UI
 ```
+
+The diagram defines the implemented ownership and data direction without
+introducing an additional framework.
 
 ## Human Manager
 
-User of the application.
+- selects one fictional team;
+- receives an AI Assistant recommendation;
+- chooses the human team's valid tactic;
+- advances the match through approved interaction points.
 
-Responsibilities:
+The Human Manager is not an AI agent.
 
-* start match;
-* inspect state;
-* continue to next block.
+## AI Assistant Coach
 
-Not an AI agent.
+- chooses whether to request approved read-only context through local tools;
+- recommends one existing valid tactic with a short reason;
+- returns structured, validated output;
+- cannot apply the tactic or affect MatchState directly.
+
+## AI Opponent Coach
+
+- chooses whether to request approved read-only context through local tools;
+- selects one existing valid tactic autonomously;
+- returns structured, validated output;
+- cannot affect MatchState directly.
 
 ## Match Controller
 
-Deterministic application code.
+The Match Controller is deterministic application code. It:
 
-Responsibilities:
+- manages match phases and interaction boundaries;
+- builds bounded decision contexts;
+- validates decisions;
+- supplies approved inputs to the Match Engine;
+- applies resolved results to MatchState;
+- updates energy and structured events;
+- manages match completion.
 
-* manage match phases;
-* select and validate deterministic Footballer behaviors;
-* invoke Match Engine;
-* update score, energy, Match State, and structured events;
-* pause between blocks;
-* manage match completion.
+It does not implement a competing outcome model.
 
 ## Match Engine
 
-Not an AI agent.
+The Match Engine:
 
-Responsibilities:
+- calculates effective attack and defense;
+- applies energy, tactic, and behavior modifiers;
+- applies seeded randomness;
+- resolves abstract `CHANCE` and `GOAL` outcomes for each block.
 
-* calculate strengths;
-* apply tactics;
-* apply behaviors;
-* apply randomness;
-* return abstract `CHANCE` and `GOAL` outcomes for one block.
+It does not currently resolve assists, cards, substitutions, goalkeeper saves,
+injuries, or fouls. Because these are not domain events, the presentation layer
+must not manufacture them.
 
-## CoachAgent
-
-One per team.
-
-Uses Groq.
-
-Receives limited Match State.
-
-Chooses one valid team tactic:
-
-```text
-ATTACK
-BALANCED
-DEFEND
-```
-
-Output must be structured and validated.
-
-Each Coach is consulted once before each block, for a maximum of four calls per
-Coach and eight calls per complete match. Missing configuration, provider
-errors, or invalid structured output retain the team's current tactic. Response
-ID, model, and raw usage metadata are preserved for later usage tracking but are
-not aggregated in this step.
-
-## Footballers
-
-Each team contains 11 starting Footballers.
-
-Internal implementations:
-
-```text
-ReactiveFootballer
-TacticalFootballer
-CognitiveFootballer
-```
-
-Exactly one CognitiveFootballer per team uses Groq in v0.1.0. It receives only
-its own attributes plus the current phase, score situation, team tactic, team
-energies, and previous block result. It returns one validated existing behavior.
-If Groq is unavailable or invalid, the existing TacticalFootballer logic selects
-the behavior.
-
-The remaining Footballers use Python decision logic.
-
-Each CognitiveFootballer is consulted once before each block, for at most eight
-Cognitive calls per match. Together with the two Coaches, the theoretical
-maximum is 16 Groq calls per complete match.
+Existing calibrated values remain unchanged unless a separate calibration task
+explicitly approves a change.
 
 ## Match State
 
-The Match State must stay small enough to answer:
+Match State remains small and serializable. It contains only information needed
+to answer the current match situation, including minute, score, phase, tactics,
+team strength, energy, and previous block result.
 
-1. Who is winning?
-2. How is each team playing?
-3. How much performance capacity remains?
+Team selection and human-control ownership may be represented by application
+state, but they must not create another source of match outcomes.
 
-Minimum information includes:
+## Presentation Layer
 
-```text
-minute
-score
-team tactic
-team strength
-average energy
-previous block result
-```
+FastAPI serves one Jinja2 page and a small JSON API. Vanilla JavaScript renders
+the serialized state and invokes application actions. Browser code does not
+duplicate simulation rules.
 
-## Footballer State
+The Match Engine resolves each block once. The presentation builder may assign
+seeded display timestamps and abstract narrative messages after resolution.
+Presentation events cannot alter score, energy, tactics, behaviors,
+probabilities, or MatchState.
 
-Minimum state:
+### 2D Match Visualizer
 
-```text
-skill
-intelligence
-stamina
-energy
-behavior
-```
+The visualizer is split into three presentation-only pieces:
 
-## Match Block Workflow
+- `app/web/visualizer.py` maps resolved event types to a small visual contract;
+- `static/js/match-visualizer.js` renders that contract with predefined SVG
+  positions and movements;
+- `static/css/match-visualizer.css` owns field and animation styling.
 
-```text
-Pause / Start
-      ↓
-Read Match State
-      ↓
-Build limited Coach contexts
-      ↓
-Coach A and Coach B choose tactics independently
-      ↓
-Validate and apply tactics
-      ↓
-Build limited Footballer contexts
-      ↓
-Reactive, Tactical, and Cognitive behaviors
-      ↓
-Validate decisions
-      ↓
-Match Engine simulates block
-      ↓
-Update score
-      ↓
-Update energy and Match State
-      ↓
-Generate events
-      ↓
-Browser renders block result
-      ↓
-Human Manager clicks Continue
-```
+The contract contains team labels, a presentation-only starting formation, and
+visual frames. The formation is a mirrored 4-3-3 marker layout with each team
+in its own half; it is not a tactical or positional model. A frame is one of
+`NEUTRAL`, `PRESSURE`, `CHANCE`, or `GOAL`, with an optional team side for
+animation direction. The contract contains no probabilities, possession,
+physics, or decision inputs.
 
-## Match Sequence
+The browser advances a neutral movement pattern during timed playback and
+applies event frames already attached to the resolved timeline. Player markers
+are visual tokens rather than autonomous Footballers. Replacing the component
+requires no change to the Match Engine, agent code, or domain MatchState.
 
-```text
-Start Match
+The browser has two presentation modes. Management Mode is a compact pre-match
+workspace; Match Center is a foreground surface for score, field, scrollable
+event and decision panels, progress, energy, Human Manager controls, and match
+actions. Wide monitors retain the field-and-sidebar arrangement. Medium
+desktops may give the field a full-width row with panels below it. Short desktop
+viewports use Compact Match Center, which returns panels to the field's side
+and sizes the pitch from the available match height. These responsive layouts
+preserve the `100 x 60` view-box ratio without changing player coordinates.
+Mobile layouts stack the same presentation regions.
 
-1–25
-↓
-Hydration Pause
+Starting formations are only visual anchors. Presentation metadata supplies
+mirrored, predefined targets for `PRESSURE`, `CHANCE`, and `GOAL`; the browser
+interpolates individual markers toward them so either team can cross midfield
+and enter the final third. These targets are choreography, not player state or
+simulation boundaries. Empty-feed copy uses the resolved
+`presentation_started` flag so the pre-kickoff message cannot remain after
+playback begins.
 
-26–45+5
-↓
-Half-time
+Fixed lifecycle markers are assembled in `app/web/presentation.py` at existing
+block boundaries and merged into the resolved display timeline. They are
+presentation records only and never enter domain event generation or
+MatchState.
 
-46–70
-↓
-Hydration Pause
+## Provider and Validation
 
-71–90+5
-↓
-Full-time
-```
-
-## Guardrails
-
-Agent outputs must be validated before entering the Match Engine.
-
-Invalid output must never directly affect Match State.
-
-Examples:
-
-* unsupported tactic;
-* unsupported behavior;
-* missing structured output;
-* malformed Groq response.
-
-Fallback behavior must remain deterministic.
-
-## AI Provider
-
-Only Groq is supported in v0.1.0.
-
-Configuration:
+The CognitiveFootballer continues to use Groq only. `AssistantCoach` and the
+opponent `CoachAgent` use one explicit fallback chain configured through:
 
 ```text
 GROQ_API_KEY
 GROQ_MODEL
+GEMINI_API_KEY
+GEMINI_MODEL
 ```
 
-No provider abstraction is required in v0.1.0.
+The order is Groq, then Gemini, then deterministic fallback. This is direct
+coach orchestration, not a generic provider framework. A validation-successful
+Groq result never invokes Gemini. Pydantic validates returned values from both
+providers, and provider failures cannot bypass local fallback logic. TLS
+verification remains enabled. Logs exclude credentials, authorization headers,
+prompts, full payloads, and raw provider output.
 
-The required environment variables are loaded from the environment or local
-`.env` file. Secrets are never placed in prompts, events, or error messages.
-
-CoachAgent and CognitiveFootballer use Groq JSON Object Mode with explicit
-JSON-only prompts. Qwen reasoning output is `hidden`; GPT-OSS instead uses
-`include_reasoning=false`. Raw reasoning and unsupported strict `json_schema`
-requests are not used. Returned JSON remains untrusted until the existing
-Pydantic decision model accepts it. TLS verification stays enabled and uses the
-operating system trust store so locally trusted issuer certificates are honored.
-
-The configured v0.1.0 model is `qwen/qwen3.8-27b`. Its centralized pricing entry
-uses the published input and output rates for usage estimates.
-
-Provider failures emit concise developer logs containing the agent ID, model,
-HTTP status when available, provider error type, normalized category, sanitized
-message, and deterministic-fallback outcome. Logs exclude API keys,
-authorization headers, prompts, full payloads, and raw model output. Successful
-responses clear the agent's prior error state, so browser status can return from
-`ERROR` to `CONNECTED` after service recovery. No retries or diagnostic provider
-calls are introduced; the maximum remains 16 requests per complete match.
-
-## AI Usage Tracking
-
-Each Match Controller owns one in-memory `UsageTracker`. For every Groq request
-actually attempted by a Coach or CognitiveFootballer, it records:
+Groq tool selection uses `tool_choice="auto"` and
+`reasoning_format="hidden"` without legacy JSON mode. If tools are selected,
+the final non-tool request may use JSON mode. Gemini disables SDK automatic
+function execution so application code validates and executes the same five
+local tools. These tools only read `CoachContext`:
 
 ```text
-agent
-model
-input tokens
-output tokens
-total tokens
-cached tokens when available
-estimated cost
+get_score
+get_match_phase
+get_team_energy
+get_opponent_energy
+get_current_tactic
 ```
 
-The tracker provides match totals and totals filtered by agent ID or agent type.
-Local fallbacks without a provider request create no usage record. Failed
-provider attempts are recorded without fabricated tokens or cost.
+After one optional tool round, the application requests the final structured
+decision. Unknown tools, malformed arguments, provider failures, or an invalid
+Groq contract advance to Gemini. Equivalent Gemini failures use the existing
+deterministic fallback. Each provider request, including both halves of a tool
+round trip, is recorded separately with its provider identity.
 
-Token counts come from Groq response metadata. Pricing lives in one application
-mapping and estimated cost is calculated independently for input and output
-tokens per million. If metadata or model pricing is unavailable, token fields or
-cost remain unknown rather than being estimated. Pricing can change and must be
-reviewed when the selected model changes; estimated cost is not an invoice or
-authoritative billing record.
+The web session derives a compact runtime status from existing agent execution
+metadata. `READY` means configured but not yet proven by inference; `ACTIVE`
+identifies the provider behind the most recent valid AI decision; deterministic
+fallback is reported explicitly. The payload exposes no exception text,
+credentials, prompts, or raw provider responses.
 
-Tracking has no persistence and sends no data to an external observability
-platform.
+The local launcher reports only whether Groq and the optional Gemini fallback
+are configured. It never prints credential values. `GEMINI_MODEL` is optional;
+when absent, coaching uses the existing `gemini-3.1-flash-lite` default.
 
-## Browser Interface
+## Usage Tracking
 
-The FastAPI application in `app/main.py` serves one Jinja2 page plus a minimal
-JSON API. Plain JavaScript requests the current state and the start, continue,
-or reset action; it does not duplicate simulation rules. `WebMatchSession` owns
-one in-memory `MatchController` and serializes only the score, phase, team
-summary, approved events, latest decisions, provider status, and usage needed by
-the screen.
+Provider usage is held in memory for the current match. It may include agent,
+provider, model, token counts, cached-token counts when available, and estimated
+cost. Missing provider usage fields remain unknown rather than being inferred.
+Fallback decisions without a provider request create no provider usage record.
+Cost estimates are informational, not billing records.
 
-The root `run.py` launcher starts Uvicorn on `127.0.0.1:8000`, waits for the
-state endpoint to respond, then opens the default browser. The server and
-browser layer do not add persistence, identity, background provider polling, or
-new match mechanics.
+## Data and Deployment
 
-The Match Engine evaluates each block once. After that evaluation, a small
-backend presentation builder assigns seeded display timestamps. A continuous
-seeded schedule places narrative moments at variable gaps, generally around 5
-to 12 displayed minutes, without resetting at block boundaries. The browser
-progressively presents the finalized block result at 2.4 real seconds per
-displayed match minute. It delays the visible score until a finalized GOAL entry
-is revealed and updates energy only when playback ends.
-
-Game events remain the four domain event types and correspond to simulation
-state. Presentation events are narrative-only timeline entries; they cannot
-alter score, energy, tactics, probabilities, behaviors, or MatchState. Playback
-also performs no agent or provider calls.
-
-The presentation builder inserts a seeded `QUIET_MATCH` entry whenever 15
-displayed match minutes pass without any visible feed activity. This inactivity
-tracking continues across block boundaries and resets after every game,
-narrative, or quiet-match entry.
-
-Narrative selection classifies displayed time as early (1–30), middle (31–70),
-late (71–90), or stoppage time. It combines that bucket with whether the
-selected team is winning, drawing, or losing at that display timestamp. These
-are presentation concepts only and are not added to Match Engine state.
-
-Break preferences are browser state only. `Pause at breaks` defaults to enabled;
-when disabled, vanilla JavaScript displays a 15-second countdown and invokes the
-existing single-block continue endpoint once. There are no backend timers or
-jobs. Full time cannot auto-resume. The disabled `MANAGE TEAM` control is a
-presentation placeholder with no route, state, or team-management design.
-
-## Calibration Diagnostics
-
-`scripts/calibrate_matches.py` runs the existing four-block match flow with
-seeds `1..N`, explicit local fallback agents, no browser playback, and no Groq
-requests. It aggregates outcomes, goal totals, goal buckets, and scoreline
-frequencies using only the Python standard library. The runner measures current
-behavior and does not change probability bands, modifiers, attributes, or any
-other Match Engine value.
-
-For controlled goal-frequency experiments, the runner temporarily replaces the
-goal-probability mapping referenced by the diagnostic process inside a guarded
-context and restores the original reference in `finally`. Candidate profiles
-are not application configuration, never change chance probabilities, and
-cannot persist into the browser application or normal Match Engine defaults.
+- Data remains in memory.
+- The local launcher binds to `127.0.0.1`.
+- No authentication, persistence, database, or external observability service
+  is part of the current scope.
+- Authentication, request-origin protection, rate limiting, TLS termination,
+  and per-user state become mandatory before network hosting.
 
 ## Technology Stack
 
@@ -344,50 +301,17 @@ Python 3.12+
 FastAPI
 Pydantic
 Groq SDK
-HTML
-CSS
-Vanilla JavaScript
+Google Gen AI SDK
 Jinja2
+HTML / CSS / Vanilla JavaScript
 pytest
-environment variables / .env
+python-dotenv
 ```
 
-Data remains in memory or simple configuration structures.
+Do not add an orchestration framework or other dependency unless a current,
+explicitly approved implementation task demonstrates a clear need.
 
-No database is required.
+## Scope Control
 
-## Localization
-
-Internal architecture, identifiers and code use English.
-
-User-facing strings must remain separate from game logic.
-
-English is the initial UI language.
-
-Future localization may include:
-
-```text
-pt-BR
-fr
-```
-
-Localization implementation itself is not required for v0.1.0.
-
-## Explicit Architectural Exclusions
-
-Do not introduce in v0.1.0:
-
-```text
-LangGraph
-RAG
-vector database
-SQL database
-React
-TypeScript
-Ollama
-multiple AI providers
-microservices
-event bus
-complex graph orchestration
-free agent-to-agent communication
-```
+`CURRENT_SCOPE.md` defines approved work. `IDEA_BACKLOG.md` contains candidates
+only. Backlog technologies and product ideas are not architectural commitments.

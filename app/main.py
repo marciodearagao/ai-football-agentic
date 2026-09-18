@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.version import APP_VERSION
 from app.web.routes import router
 from app.web.session import WebMatchSession
 
@@ -13,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 def create_app(match_session: WebMatchSession | None = None) -> FastAPI:
     load_dotenv(PROJECT_ROOT / ".env")
-    application = FastAPI(title="AI Football Agentic", version="0.1.0")
+    application = FastAPI(title="AI Football Agentic", version=APP_VERSION)
     application.state.match_session = match_session or WebMatchSession()
     application.state.templates = Jinja2Templates(
         directory=str(PROJECT_ROOT / "templates")
