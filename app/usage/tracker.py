@@ -2,7 +2,7 @@ from collections.abc import Iterable, Mapping
 from decimal import Decimal
 from typing import Any
 
-from app.usage.models import AgentType, UsageRecord, UsageTotals
+from app.usage.models import AgentType, ProviderName, UsageRecord, UsageTotals
 from app.usage.pricing import estimate_cost
 
 
@@ -18,22 +18,41 @@ class UsageTracker:
         *,
         agent_id: str,
         agent_type: AgentType,
+        provider: ProviderName = ProviderName.GROQ,
         model: str | None,
         used_fallback: bool,
         response_metadata: object | None = None,
     ) -> UsageRecord:
         response_model = _read_value(response_metadata, "model")
+        response_provider = _read_value(response_metadata, "provider")
         usage = _read_value(response_metadata, "usage")
+        resolved_provider = _provider_name(response_provider, provider)
         resolved_model = response_model if isinstance(response_model, str) else model
-        input_tokens = _read_optional_int(usage, "prompt_tokens", "input_tokens")
-        output_tokens = _read_optional_int(
-            usage, "completion_tokens", "output_tokens"
+        input_tokens = _read_optional_int(
+            usage,
+            "prompt_tokens",
+            "input_tokens",
+            "prompt_token_count",
         )
-        total_tokens = _read_optional_int(usage, "total_tokens")
+        output_tokens = _read_optional_int(
+            usage,
+            "completion_tokens",
+            "output_tokens",
+            "candidates_token_count",
+        )
+        total_tokens = _read_optional_int(
+            usage,
+            "total_tokens",
+            "total_token_count",
+        )
         prompt_details = _read_value(usage, "prompt_tokens_details")
         cached_tokens = _read_optional_int(prompt_details, "cached_tokens")
         if cached_tokens is None:
-            cached_tokens = _read_optional_int(usage, "cached_tokens")
+            cached_tokens = _read_optional_int(
+                usage,
+                "cached_tokens",
+                "cached_content_token_count",
+            )
         if (
             input_tokens is not None
             and output_tokens is not None
@@ -50,6 +69,7 @@ class UsageTracker:
         record = UsageRecord(
             agent_id=agent_id,
             agent_type=agent_type,
+            provider=resolved_provider,
             model=resolved_model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -76,6 +96,11 @@ class UsageTracker:
     def totals_for_agent_type(self, agent_type: AgentType) -> UsageTotals:
         return self._aggregate(
             record for record in self.records if record.agent_type is agent_type
+        )
+
+    def totals_for_provider(self, provider: ProviderName) -> UsageTotals:
+        return self._aggregate(
+            record for record in self.records if record.provider is provider
         )
 
     @staticmethod
@@ -121,3 +146,10 @@ def _read_optional_int(source: object | None, *fields: str) -> int | None:
                 return None
             return normalized if normalized >= 0 else None
     return None
+
+
+def _provider_name(value: object, default: ProviderName) -> ProviderName:
+    try:
+        return ProviderName(value)
+    except (TypeError, ValueError):
+        return default

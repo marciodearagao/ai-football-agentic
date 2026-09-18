@@ -1,18 +1,88 @@
-# GAME_SPEC.md
+# Game Specification
+
+## Status
+
+This specification records the released v0.2.0 simulation rules and interaction
+constraints.
 
 ## Core Principle
 
-The game is a probabilistic football simulation.
+The game is a probabilistic football simulation. Agents and the Human Manager
+choose bounded inputs. The Match Engine determines consequences.
 
-Agents choose behavior.
+No agent, tool, visual component, or human action directly decides:
 
-The `Match Engine` determines consequences.
+- goals;
+- final scores;
+- match outcomes.
 
-Agents never directly decide:
+## Match Structure
 
-* goals;
-* final scores;
-* match outcomes.
+One match has four blocks:
+
+1. minutes 1-25;
+2. minutes 26-45+5;
+3. minutes 46-70;
+4. minutes 71-90+5.
+
+There are hydration breaks after minutes 25 and 70, half-time after the second
+block, and full-time after the fourth block.
+
+## Teams and Control
+
+The application contains two fictional teams and requires the Human Manager to
+select one before kickoff. The selected side is stored only in the current
+in-memory web session, and the other existing team is identified as the
+opponent. Starting a match without a selection is invalid. Starting a new match
+after full time clears the selection.
+
+Team selection must not silently alter attributes, probabilities, calibrated
+engine values, match structure, internal team ordering, or seeded outcomes.
+
+## Tactic Decision Contract
+
+Allowed team tactics remain:
+
+```text
+ATTACK
+BALANCED
+DEFEND
+```
+
+For the human-controlled team:
+
+1. the AI Assistant Coach recommends one valid tactic and a short reason;
+2. the Human Manager may accept or override the recommendation;
+3. the validated Human Manager choice is stored in the in-memory session;
+4. that stored choice is supplied to the next Match Engine block.
+
+For the opposing team, the AI Opponent Coach autonomously selects one valid
+tactic. Invalid or unavailable AI output must use a deterministic fallback.
+
+The selected team's autonomous CoachAgent is not consulted. An Assistant Coach
+recommendation never updates the team tactic. Only the Human Manager choice is
+applied when the block begins.
+
+Before returning a recommendation or autonomous opponent tactic, the relevant
+coach may choose to call any of these application-executed read-only tools:
+
+```text
+get_score()
+get_match_phase()
+get_team_energy()
+get_opponent_energy()
+get_current_tactic()
+```
+
+Values are returned from that coach's team perspective. Tool calls cannot
+change tactics, score, energy, events, MatchState, or Match Engine state. The
+final output still uses the same validated tactic-and-reason contract, with the
+same deterministic fallback on any provider, tool, or validation failure.
+
+Assistant and opponent coaching attempt Groq first. A Groq request, tool, or
+validation failure may invoke Gemini with the same read-only tools. Only if
+Gemini also fails is the deterministic tactic returned. A valid Groq decision
+never invokes Gemini, and neither provider can apply an Assistant recommendation.
 
 ## Footballer Attributes
 
@@ -25,79 +95,50 @@ stamina
 energy
 ```
 
-### Skill
+- `skill` contributes to team strength.
+- `intelligence` selects the internal decision implementation.
+- `stamina` influences energy loss.
+- `energy` is dynamic match state clamped to `0-100`.
 
-Represents general football ability.
-
-Used to calculate team strength.
-
-### Intelligence
-
-Determines how the Footballer's behavior is selected internally.
-
-### Stamina
-
-Represents durability.
-
-Influences how quickly energy decreases.
-
-### Energy
-
-Dynamic match state.
-
-Starts high and decreases during the match.
-
-Lower energy reduces effective performance.
-
-After each simulation block, energy consumption is calculated as:
+After each simulation block:
 
 ```text
 stamina_factor = 1.20 - (stamina / 250)
-energy_loss = 12 × stamina_factor × behavior_factor
+energy_loss = 12 * stamina_factor * behavior_factor
 ```
 
-Behavior factors are `1.15` for `ATTACK`, `1.00` for `SUPPORT`, `1.20` for
-`PRESS`, and `0.65` for `CONSERVE_ENERGY`. Energy is clamped to `0–100`, and
-there is no recovery during pauses. An `ENERGY_WARNING` is generated only when
+Behavior factors are:
+
+```text
+ATTACK           1.15
+SUPPORT          1.00
+PRESS            1.20
+CONSERVE_ENERGY  0.65
+```
+
+There is no recovery during pauses. An `ENERGY_WARNING` is generated only when
 a Footballer crosses from energy `>= 40` to energy `< 40`.
 
-## Internal Footballer Types
+## Internal Footballer Decision Types
 
-These names are internal only.
+These implementation names are not user-facing:
 
-They must never be shown to the user.
+- `ReactiveFootballer`: current-state Python rules;
+- `TacticalFootballer`: context-aware Python rules;
+- `CognitiveFootballer`: structured Groq decision with TacticalFootballer
+  fallback.
 
-### ReactiveFootballer
+The current implementation has exactly one CognitiveFootballer, three
+TacticalFootballers, and seven ReactiveFootballers per team. Each type selects
+only an existing Footballer behavior. The resulting behaviors contribute to
+the existing team-level attack and defense modifiers used by the Match Engine;
+they do not simulate individual football actions.
 
-Decision method:
-
-* simple Python rules;
-* current state only;
-* no meaningful memory.
-
-### TacticalFootballer
-
-Decision method:
-
-* Python logic;
-* considers more match context;
-* may consider previous block.
-
-### CognitiveFootballer
-
-Decision method:
-
-* Groq LLM;
-* uses structured contextual reasoning;
-* exactly one exists per team in v0.1.0;
-* makes one decision before each block, for at most four calls per match;
-* falls back to TacticalFootballer logic when configuration or output is invalid.
-
-All Footballer types choose from the same behaviors.
+There is no 11-player LLM-agent simulation, captain role, or cognitive-player
+allocation feature. The number and placement of CognitiveFootballers cannot be
+configured by the Human Manager in the current version.
 
 ## Footballer Behaviors
-
-Allowed behaviors:
 
 ```text
 ATTACK
@@ -106,133 +147,10 @@ PRESS
 CONSERVE_ENERGY
 ```
 
-The behaviors are abstract.
+Behaviors are abstract and do not represent individual passes, shots, tackles,
+positions, or physical actions.
 
-They do not represent individual passes, shots, tackles or physical actions.
-
-### ATTACK
-
-Increases offensive contribution.
-
-Consumes additional energy.
-
-### SUPPORT
-
-Provides a small balanced contribution.
-
-### PRESS
-
-Increases defensive pressure.
-
-Consumes additional energy.
-
-### CONSERVE_ENERGY
-
-Reduces immediate contribution.
-
-Reduces energy consumption.
-
-## Team Tactics
-
-Coach Agent chooses from:
-
-```text
-ATTACK
-BALANCED
-DEFEND
-```
-
-Each Coach chooses once before each simulation block using score, match phase,
-current tactic, average energy, relative team strength, and the previous block
-result. Responses are structured and validated. If Groq is unavailable or the
-response is invalid, the current tactic is retained.
-
-### ATTACK
-
-Higher offensive potential.
-
-Higher defensive exposure.
-
-### BALANCED
-
-Neutral modifier.
-
-### DEFEND
-
-Lower offensive potential.
-
-Higher defensive protection.
-
-## Base Team Strength
-
-Initial model:
-
-```text
-base_team_strength =
-average(skill of starting Footballers)
-```
-
-No positional weighting in v0.1.0.
-
-## Effective Strength
-
-The Match Engine calculates separate values for:
-
-```text
-effective_attack
-effective_defense
-```
-
-Conceptually:
-
-```text
-base strength
-× energy modifier
-× tactic modifier
-× Footballer behavior modifier
-```
-
-Randomness is then applied.
-
-Initial values are calibration parameters, not permanent football rules.
-
-## Energy Modifier
-
-Initial calibration bands may follow approximately:
-
-```text
-90–100 → 1.00
-75–89  → 0.97
-60–74  → 0.92
-40–59  → 0.85
-<40    → 0.75
-```
-
-These values may change during testing.
-
-## Tactical Modifiers
-
-Initial example:
-
-```text
-ATTACK
-attack: +8%
-defense: -6%
-
-BALANCED
-neutral
-
-DEFEND
-attack: -8%
-defense: +8%
-```
-
-These values remain configurable.
-
-## Behavior Modifiers
-
-Behavior effects remain small and are aggregated at team level. Each Footballer
-adds the following adjustment:
+The team-level adjustments contributed by each Footballer are:
 
 ```text
 ATTACK
@@ -252,43 +170,79 @@ attack: -3%
 defense: -3%
 ```
 
-The adjustments from all 11 Footballers are summed separately for attack and
-defense, then each total is capped to the range `-10%` to `+10%`. This step uses
-current behavior only and does not consume energy.
+Adjustments for all 11 Footballers are summed independently for attack and
+defense, then capped to `-10%` through `+10%`.
+
+## Base and Effective Strength
+
+Base team strength is:
+
+```text
+average(skill of starting Footballers)
+```
+
+There is no positional weighting in the current Match Engine.
+
+Effective attack and defense conceptually combine:
+
+```text
+base strength
+* energy modifier
+* tactic modifier
+* Footballer behavior modifier
+* controlled randomness
+```
+
+## Energy Modifiers
+
+```text
+90-100  -> 1.00
+75-89   -> 0.97
+60-74   -> 0.92
+40-59   -> 0.85
+<40     -> 0.75
+```
+
+## Tactical Modifiers
+
+```text
+ATTACK
+attack: +8%
+defense: -6%
+
+BALANCED
+neutral
+
+DEFEND
+attack: -8%
+defense: +8%
+```
 
 ## Randomness
 
-The engine applies controlled randomness.
-
-Initial range:
+The engine applies controlled randomness in the range:
 
 ```text
-0.90–1.10
+0.90-1.10
 ```
 
-The purpose is to allow unexpected results without making team strength meaningless.
+An optional seed makes the complete four-block match reproducible from
+identical initial state.
 
-## Goal Probability
+## Goal and Chance Probability
 
-Goal probability depends primarily on:
+Probability depends primarily on attacking effective strength divided by
+defending effective strength:
 
 ```text
-attacking team's effective_attack
-vs
-defending team's effective_defense
+ratio < 0.85         -> low
+0.85 <= ratio < 1.00 -> moderate_low
+1.00 <= ratio < 1.15 -> moderate
+1.15 <= ratio < 1.30 -> high
+ratio >= 1.30        -> very_high
 ```
 
-Higher ratios increase probability. The initial calibration is:
-
-```text
-ratio < 0.85        → low
-0.85 ≤ ratio < 1.00 → moderate_low
-1.00 ≤ ratio < 1.15 → moderate
-1.15 ≤ ratio < 1.30 → high
-ratio ≥ 1.30        → very_high
-```
-
-Goal and chance probabilities per team evaluation are:
+Official probabilities per team evaluation are:
 
 ```text
 band          goal   chance
@@ -299,44 +253,15 @@ high          0.36   0.45
 very_high     0.46   0.55
 ```
 
-The v0.1.0 goal values were selected through a reproducible 1,000-match seeded
-calibration comparison, rather than tuning from individual manual matches.
+The goal values were selected through a reproducible seeded 1,000-match
+calibration comparison. `CHANCE` and `GOAL` are evaluated independently. One
+block can produce at most one chance and one goal per team.
 
-`CHANCE` and `GOAL` are evaluated independently. One block can produce at most
-one of each result per team. These values remain calibration parameters.
+These values may change only through a separate approved calibration task.
 
-## Match Events
+## Domain Events
 
-The Match Engine evaluates each block once. The browser progressively presents
-the finalized block result; it does not simulate match minutes on the backend.
-
-Game events belong to the simulation and use only the approved types below. A
-seeded presentation timeline may additionally show generic pressure, momentum,
-tempo, or quiet-period narration. These presentation-only entries have no game
-effect and do not introduce new domain event types or football mechanics.
-
-If 15 displayed match minutes pass without any visible feed entry, the seeded
-presentation timeline adds a light `QUIET_MATCH` message. It resets the display
-inactivity count but has no effect on MatchState or simulation outcomes.
-
-Normal narrative moments follow a continuous seeded schedule with variable
-gaps, generally around 5–12 displayed minutes. Their templates use the score at
-the reveal timestamp and classify time as early (1–30), middle (31–70), late
-(71–90), or stoppage time. Winning, drawing, and losing context prevents obvious
-contradictions such as early urgency or a losing team protecting a lead.
-
-The developer calibration runner measures match outcomes over deterministic
-seeds without Groq, browser playback, or delays. Its output is observational;
-the probability bands, randomness, energy and tactical modifiers, behavior
-modifiers, and one-goal-per-team-per-block limit remain unchanged in this step.
-
-The browser pauses at hydration breaks and half-time by default. The user may
-disable `Pause at breaks`; each break then remains visible with a 15-second
-countdown before the normal next block begins. Full time never restarts
-automatically. A disabled `MANAGE TEAM` control shown at breaks is future-only
-and provides no management capability in v0.1.0.
-
-Only four event types exist in v0.1.0:
+Only these domain event types exist:
 
 ```text
 GOAL
@@ -345,35 +270,85 @@ TACTICAL_CHANGE
 ENERGY_WARNING
 ```
 
-### GOAL
+- `GOAL` changes the score.
+- `CHANCE` reports abstract attacking danger without a specific play.
+- `TACTICAL_CHANGE` records a validated change from the previous tactic.
+- `ENERGY_WARNING` records the approved low-energy threshold crossing.
 
-Changes the score.
+No v0.2.0 interaction may create a second outcome event path.
 
-### CHANCE
+Assists, cards, substitutions, goalkeeper saves, injuries, and fouls are not
+implemented domain mechanics or event types. Presentation text must not imply
+that they have been resolved.
 
-Indicates attacking danger without modeling a specific shot or play.
+## Presentation Events
 
-### TACTICAL_CHANGE
+The Match Engine evaluates each block once. The presentation layer then reveals
+the finalized result over display time. Presentation-only pressure, momentum,
+tempo, reaction, dominance, late-push, and quiet-match messages are narrative
+and are not domain event types.
 
-Records a Coach Agent tactical decision.
+Presentation timing uses the match seed and variable gaps, generally around
+5-12 displayed minutes. If 15 displayed minutes pass with no visible entry, a
+`QUIET_MATCH` message resets display inactivity without changing game state.
 
-Generated only when a validated Coach decision differs from the team's previous
-tactic. It records the previous and new tactic as structured values.
+The presentation timeline also marks the fixed lifecycle boundaries: kickoff,
+both hydration breaks, both resumptions, half-time, the second-half start, and
+full-time. These deterministic markers are web presentation entries rather than
+domain events and cannot modify MatchState or simulation results.
 
-### ENERGY_WARNING
+Narration classifies display time as:
 
-Generated when relevant low-energy thresholds are reached.
+```text
+EARLY          1-30
+MID            31-70
+LATE           71-90
+STOPPAGE_TIME  added time after 45 or 90
+```
 
-## Random Seed
+It may also classify a team as winning, drawing, or losing to avoid
+contradictory messages. These classifications remain presentation-only.
 
-The Match Engine must support an optional random seed.
+The visual layer shows team selection, recommendations, validated human choices,
+and a simple horizontal 2D field. The field uses team markers, a ball marker,
+and predefined patterns for neutral play, attacking pressure, chances, and
+goals. These patterns consume resolved timeline events and do not represent
+possession, passes, physics, collisions, autonomous player behavior, or a
+second simulation. The visualizer must not calculate outcomes or invoke an
+agent during playback.
 
-Purpose:
+Before kickoff, both teams use a coherent presentation-only 4-3-3 marker
+layout entirely within their own halves. During playback, neutral movement is
+subtle, pressure advances one side while the other retreats and compacts,
+chances move toward the defending penalty area, and goals end at the goal area
+with a short emphasis. None of these movements changes team ordering or match
+state.
 
-* reproducible tests;
-* debugging;
-* simulation comparison.
+## Break Behavior
 
-Normal gameplay may use a random seed automatically. The complete match flow
-uses one seeded Match Engine across all four blocks, making outcomes, event
-order, and final energy reproducible from identical initial state.
+The browser pauses at breaks by default. If `Pause at breaks` is disabled, a
+15-second browser countdown invokes the existing continue action. There are no
+backend timers. Full time never restarts automatically. Desktop layout space
+for the countdown and contextual break controls is reserved whether those
+controls are active or not, so phase changes do not resize the match surface.
+
+## Provider Failure and Validation
+
+AI responses are untrusted. Pydantic validates structured fields and allowed
+enum values. Missing configuration, provider failures, empty responses, and
+malformed output use deterministic fallback behavior.
+
+Provider credentials, authorization headers, raw reasoning, and full payloads
+must not enter prompts exposed to users, MatchState, events, or logs.
+
+## Calibration Diagnostics
+
+`scripts/calibrate_matches.py` runs the existing match flow over seeds `1..N`
+using local fallback decisions, no browser playback, no delays, and no Groq
+calls. It measures outcomes without changing production values.
+
+## Scope Boundary
+
+`CURRENT_SCOPE.md` is authoritative for approved development. Items in
+`IDEA_BACKLOG.md` are candidates only and must not be inferred from this game
+specification.

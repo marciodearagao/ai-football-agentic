@@ -1,14 +1,20 @@
 import re
 from decimal import Decimal
-from enum import Enum
+from enum import Enum, StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from typing import Annotated
 
 
 class AgentType(str, Enum):
+    ASSISTANT_COACH = "ASSISTANT_COACH"
     COACH = "COACH"
     COGNITIVE_FOOTBALLER = "COGNITIVE_FOOTBALLER"
+
+
+class ProviderName(StrEnum):
+    GROQ = "GROQ"
+    GEMINI = "GEMINI"
 
 
 class UsageRecord(BaseModel):
@@ -16,6 +22,7 @@ class UsageRecord(BaseModel):
 
     agent_id: Annotated[str, StringConstraints(min_length=1)]
     agent_type: AgentType
+    provider: ProviderName = ProviderName.GROQ
     model: str | None = None
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
@@ -52,6 +59,10 @@ class UsageTotals(BaseModel):
 
 
 def make_agent_id(agent_type: AgentType, name: str) -> str:
-    prefix = "coach" if agent_type is AgentType.COACH else "footballer"
+    prefixes = {
+        AgentType.ASSISTANT_COACH: "assistant",
+        AgentType.COACH: "coach",
+        AgentType.COGNITIVE_FOOTBALLER: "footballer",
+    }
     slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
-    return f"{prefix}:{slug}"
+    return f"{prefixes[agent_type]}:{slug}"

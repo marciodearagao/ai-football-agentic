@@ -143,7 +143,8 @@ def test_valid_structured_tactic_is_accepted(tactic: TeamTactic) -> None:
     assert decision.tactic is tactic
     assert decision.reason == "Brief tactical reason."
     assert agent.provider_call_count == 1
-    assert calls[0]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in calls[0]
+    assert calls[0]["tool_choice"] == "auto"
     assert calls[0]["reasoning_format"] == "hidden"
     assert "valid JSON object only" in calls[0]["messages"][0]["content"]
 
@@ -203,6 +204,7 @@ def test_response_metadata_is_preserved_without_aggregation() -> None:
 
     assert len(agent.response_metadata) == 1
     assert agent.response_metadata[0].response_id == "response-1"
+    assert agent.response_metadata[0].provider.value == "GROQ"
     assert agent.response_metadata[0].model == "test-model"
     assert agent.response_metadata[0].usage == {
         "prompt_tokens": 10,

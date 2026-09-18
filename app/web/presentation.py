@@ -117,12 +117,13 @@ class TimelineEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     block_number: int = Field(ge=1, le=4)
-    tick: int = Field(ge=1, le=TICKS_PER_BLOCK)
-    absolute_minute: int = Field(ge=1, le=TOTAL_MATCH_TICKS)
+    tick: int = Field(ge=0, le=TICKS_PER_BLOCK)
+    absolute_minute: int = Field(ge=0, le=TOTAL_MATCH_TICKS)
     display_minute: str
     kind: Literal["GAME", "PRESENTATION"]
     type: str
     text: str
+    team_side: Literal["team_a", "team_b"] | None = None
     score_after: dict[str, int] | None = None
 
 
@@ -171,9 +172,10 @@ def build_block_playback(
         start_score=start_score,
         last_narrative_text=last_narrative_text,
     )
+    milestone_timeline = _build_milestone_timeline(block_number)
     timeline = sorted(
-        game_timeline + narrative_timeline,
-        key=lambda item: (item.absolute_minute, item.kind != "GAME"),
+        game_timeline + narrative_timeline + milestone_timeline,
+        key=_timeline_sort_key,
     )
     timeline = add_quiet_match_events(
         timeline,
@@ -294,7 +296,7 @@ def add_quiet_match_events(
             _quiet_event(block_number, activity_minute, rng.choice(QUIET_MATCH_MESSAGES))
         )
 
-    return sorted(filled, key=lambda item: (item.absolute_minute, item.kind != "GAME"))
+    return sorted(filled, key=_timeline_sort_key)
 
 
 def format_match_minute(block_number: int, tick: int) -> str:
@@ -376,6 +378,9 @@ def _build_game_timeline(
                 kind="GAME",
                 type=event.type.value,
                 text=text,
+                team_side=(
+                    "team_a" if event.team_name == team_a_name else "team_b"
+                ),
                 score_after=score_after,
             )
         )
@@ -403,7 +408,7 @@ def _build_narrative_timeline(
         if absolute_minute in game_minutes:
             continue
         score = _score_at_minute(start_score, game_timeline, absolute_minute)
-        category, text, _ = select_narrative(
+        category, text, team = select_narrative(
             match_seed=match_seed,
             absolute_minute=absolute_minute,
             team_a_name=team_a_name,
@@ -421,10 +426,37 @@ def _build_narrative_timeline(
                 kind="PRESENTATION",
                 type=category,
                 text=text,
+                team_side="team_a" if team == team_a_name else "team_b",
             )
         )
         previous_text = text
     return timeline
+
+
+def _build_milestone_timeline(block_number: int) -> list[TimelineEvent]:
+    """Create fixed lifecycle markers without adding domain match events."""
+    return [
+        TimelineEvent(
+            block_number=block_number,
+            tick=tick,
+            absolute_minute=absolute_minute,
+            display_minute=display_minute,
+            kind="PRESENTATION",
+            type="MILESTONE",
+            text=text,
+        )
+        for tick, absolute_minute, display_minute, text in _MILESTONES[block_number]
+    ]
+
+
+def _timeline_sort_key(event: TimelineEvent) -> tuple[int, int]:
+    if event.type == "MILESTONE":
+        priority = 0 if event.tick <= 1 else 3
+    elif event.kind == "GAME":
+        priority = 1
+    else:
+        priority = 2
+    return event.absolute_minute, priority
 
 
 def _score_at_minute(
@@ -499,6 +531,26 @@ def _quiet_event(block_number: int, absolute_minute: int, text: str) -> Timeline
         type="QUIET_MATCH",
         text=text,
     )
+
+
+_MILESTONES = {
+    1: (
+        (0, 0, "0'", "⚽ Kickoff"),
+        (25, 25, "25'", "💧 Hydration break"),
+    ),
+    2: (
+        (1, 26, "26'", "▶ Play resumes"),
+        (25, 50, "45+5'", "⏸ Half-time"),
+    ),
+    3: (
+        (1, 51, "46'", "▶ Second half"),
+        (25, 75, "70'", "💧 Hydration break"),
+    ),
+    4: (
+        (1, 76, "71'", "▶ Play resumes"),
+        (25, 100, "90+5'", "🏁 Full-time"),
+    ),
+}
 
 
 def _goal_message(

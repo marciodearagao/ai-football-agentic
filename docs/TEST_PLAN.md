@@ -1,83 +1,42 @@
-# TEST_PLAN.md
+# Test Plan
 
 ## Objective
 
-Verify that v0.1.0 behaves consistently, plausibly and safely without attempting to prove realistic football simulation.
+Protect the released v0.2.0 simulation. Tests prove responsibility boundaries
+and determinism; they are not intended to prove realistic football simulation.
 
-## Unit Tests
+## Current Baseline
 
-### Footballer
+The existing suite remains the regression baseline for:
 
-Verify:
+- domain model validation;
+- Reactive, Tactical, and Cognitive Footballer decisions;
+- CoachAgent validation and deterministic fallback;
+- Match Engine modifiers, probability bands, and seeded randomness;
+- match phases, energy changes, and event ordering;
+- presentation-only playback;
+- provider error sanitization and usage tracking;
+- FastAPI routes and browser-session serialization;
+- required in-memory Team Selection and opponent assignment;
+- Human Manager tactic ownership, non-mutating Assistant advice, and autonomous
+  opponent coaching;
+- perspective-aware, read-only coach tool calling and safe fallback;
+- visualizer payload mapping and isolation from resolved match state;
+- calibration aggregation.
 
-* valid attributes;
-* energy decreases correctly;
-* energy never becomes invalid;
-* stamina affects energy consumption;
-* valid behaviors only.
+## Permanent Engine Tests
 
-### Footballer Decision Logic
+Verify that:
 
-Verify:
+- the Match Engine alone changes score and resolves outcomes;
+- effective strength uses the approved energy, tactic, and behavior inputs;
+- randomness remains inside its configured range;
+- the same initial state and seed produce the same simulation result;
+- presentation timing does not change simulation results;
+- invalid agent output cannot mutate MatchState;
+- unsupported domain event types are rejected.
 
-* ReactiveFootballer follows rules;
-* TacticalFootballer uses expected context;
-* invalid behavior is rejected;
-* fallback behavior works.
-
-CognitiveFootballer tests should mock Groq.
-
-### Coach Agent
-
-Verify:
-
-* only valid tactics accepted;
-* malformed AI output rejected;
-* fallback tactic works;
-* structured output validated.
-
-### Match Engine
-
-Verify:
-
-* team strength calculated correctly;
-* energy modifiers applied;
-* tactical modifiers applied;
-* behavior modifiers applied;
-* randomness stays inside configured boundaries;
-* goals correctly change score.
-
-### Random Seed
-
-Verify:
-
-```text
-same inputs + same seed
-=
-same simulation result
-```
-
-## Match Flow Tests
-
-Verify correct sequence:
-
-```text
-START
-→ 25
-→ hydration
-→ 45+5
-→ half-time
-→ 70
-→ hydration
-→ 90+5
-→ full-time
-```
-
-Verify that the Human Manager cannot accidentally skip invalid phases.
-
-## Event Tests
-
-Only these event types should be accepted:
+Approved domain event types remain:
 
 ```text
 GOAL
@@ -86,68 +45,98 @@ TACTICAL_CHANGE
 ENERGY_WARNING
 ```
 
-Unsupported event types must not appear.
+## v0.2.0 Feature Tests
 
-## Usage Tracking Tests
+These feature tests are part of the active regression suite.
 
-Using mocked Groq responses, verify:
+### Team Selection
 
-* API calls counted;
-* input tokens accumulated;
-* output tokens accumulated;
-* total tokens calculated;
-* usage separated by agent;
-* estimated cost calculated correctly when pricing exists;
-* application works when pricing is unavailable.
+- only available fictional teams can be selected;
+- exactly one team is controlled by the Human Manager;
+- the opposing team is identified consistently;
+- selection alone does not change team attributes or Match Engine rules.
 
-## Plausibility Tests
+### AI Assistant Coach
 
-Run repeated simulations to inspect whether:
+- can choose approved read-only context tools;
+- recommends only a valid tactic;
+- provides a bounded reason;
+- cannot apply its recommendation directly;
+- malformed or unavailable output uses deterministic fallback advice.
 
-* stronger teams tend to perform better;
-* weaker teams can still win sometimes;
-* ATTACK increases attacking potential;
-* DEFEND increases defensive protection;
-* low energy reduces performance;
-* randomness does not completely dominate skill.
+### Human-in-the-loop Decision
 
-These are calibration tests rather than strict realism tests.
+- the Human Manager may accept or override the recommendation;
+- only a valid tactic can be submitted;
+- no match block resolves before the required decision is complete;
+- the recorded human choice, not the recommendation, reaches orchestration.
 
-## Scope Protection Tests / Review
+### AI Opponent Coach
 
-Before completing each implementation milestone, verify that no feature has introduced:
+- can choose approved read-only context tools;
+- selects only a valid tactic;
+- remains autonomous;
+- malformed or unavailable output uses deterministic fallback behavior.
 
-* passes;
-* shots;
-* tackles;
-* ball possession;
-* substitutions;
-* injuries;
-* cards;
-* free agent communication;
-* championships;
-* real datasets.
+### Visual Presentation
 
-If implementation requires one of those features, stop and treat it as future scope instead of silently expanding v0.1.0.
+- the selected human team is clearly identified;
+- advice and final human choice are distinguishable;
+- the visualizer maps resolved neutral, pressure, chance, and goal events to
+  predefined presentation states;
+- starting formations contain eleven role-labelled markers per team and keep
+  both teams in their own halves;
+- pre-kickoff and in-progress empty-feed messages follow presentation state;
+- rendering or reading the visualizer contract does not change match results;
+- events remain chronological;
+- visible score changes only when the resolved goal is revealed;
+- playback performs no agent or provider call;
+- presentation events never mutate game state.
 
-## Definition of Done
+## Provider and Security Tests
 
-v0.1.0 is ready for GitHub when:
+Using mocked provider responses, verify:
 
-* application starts locally;
-* full match completes;
-* browser UI works;
-* agents affect simulation;
-* Groq failures have safe fallback;
-* token usage is visible;
-* tests pass;
-* `.env` secrets are excluded;
-* README explains setup and architecture;
-* no explicit OUT/FUTURE feature has entered the implementation.
+- valid structured output is accepted;
+- Groq tool selection omits incompatible legacy JSON mode;
+- valid Groq output does not invoke Gemini;
+- Groq failure invokes Gemini before deterministic fallback;
+- Gemini uses the same read-only tool contract;
+- local tool schemas are bounded and tool results use the correct team
+  perspective;
+- unknown or malformed tool calls fall back without mutating match state;
+- malformed output and provider errors fall back safely;
+- API keys, authorization headers, prompts, and raw payloads are not logged;
+- usage counts every attempted provider call, including tool round trips;
+- usage records distinguish Groq and Gemini;
+- missing usage or pricing metadata remains unknown rather than fabricated;
+- the application remains fully playable without provider configuration.
 
-## Dependency warnings
+Normal automated tests must not require a live provider call.
 
-The v0.1.0 test run may report two deprecation warnings originating inside the
-installed FastAPI/Starlette test-client compatibility layer. Project code does
-not call the deprecated APIs. Dependency upgrades are intentionally deferred
-because the warnings do not affect runtime behavior or test results.
+## Scope Protection Review
+
+Before completing any task:
+
+1. read `CURRENT_SCOPE.md`;
+2. confirm the task is explicitly approved;
+3. verify that no `IDEA_BACKLOG.md` item entered implementation;
+4. confirm that no second outcome engine or presentation-side simulation was
+   introduced;
+5. update affected specs and remove stale references;
+6. run the complete test suite.
+
+## Definition of Done for a Documentation-Only Task
+
+- only documentation or comments required by the task changed;
+- runtime behavior is unchanged;
+- current scope and backlog remain clearly separated;
+- public docs describe current behavior without promising backlog items;
+- historical release notes remain intact;
+- all tests pass.
+
+## Known Dependency Warnings
+
+The suite may report two deprecation warnings from the installed
+FastAPI/Starlette test-client compatibility layer. Project code does not call
+the deprecated APIs. Any dependency update requires a separate approved task.

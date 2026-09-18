@@ -9,11 +9,19 @@ from app.web.presentation import (
     scheduled_narrative_minutes,
     select_narrative,
 )
-from app.web.session import WebMatchSession
+from app.domain.enums import TeamTactic
+from app.web.session import TeamSide, WebMatchSession
+
+
+def _selected_session(seed: int) -> WebMatchSession:
+    session = WebMatchSession(seed=seed, api_key="", model="")
+    session.select_team(TeamSide.TEAM_A)
+    session.set_human_tactic(TeamTactic.BALANCED)
+    return session
 
 
 def _complete_match(seed: int) -> tuple[WebMatchSession, list[dict[str, object]]]:
-    session = WebMatchSession(seed=seed)
+    session = _selected_session(seed)
     responses = [session.start()]
     while session.controller.phase is not MatchPhase.FULL_TIME:
         responses.append(session.continue_match())
@@ -30,8 +38,61 @@ def test_timestamps_are_ordered_and_inside_each_block() -> None:
         assert [event["tick"] for event in timeline] == sorted(
             event["tick"] for event in timeline
         )
-        assert all(1 <= event["tick"] <= 25 for event in timeline)
+        assert all(0 <= event["tick"] <= 25 for event in timeline)
+        assert all(
+            event["tick"] > 0
+            or (block_number == 1 and event["type"] == "MILESTONE")
+            for event in timeline
+        )
         assert all(event["block_number"] == block_number for event in timeline)
+
+
+def test_match_lifecycle_milestones_follow_fixed_block_boundaries() -> None:
+    _, responses = _complete_match(42)
+    milestones = [
+        event
+        for response in responses
+        for event in response["playback"]["timeline"]
+        if event["type"] == "MILESTONE"
+    ]
+
+    assert [
+        (event["display_minute"], event["text"])
+        for event in milestones
+    ] == [
+        ("0'", "⚽ Kickoff"),
+        ("25'", "💧 Hydration break"),
+        ("26'", "▶ Play resumes"),
+        ("45+5'", "⏸ Half-time"),
+        ("46'", "▶ Second half"),
+        ("70'", "💧 Hydration break"),
+        ("71'", "▶ Play resumes"),
+        ("90+5'", "🏁 Full-time"),
+    ]
+    assert all(event["kind"] == "PRESENTATION" for event in milestones)
+    assert len({event["absolute_minute"] for event in milestones}) == 8
+
+
+def test_milestone_feed_does_not_mutate_match_state_or_duplicate_events() -> None:
+    session, responses = _complete_match(17)
+    finalized_state = session.controller.state.model_copy(deep=True)
+    milestone_keys = [
+        (event["absolute_minute"], event["text"])
+        for response in responses
+        for event in response["playback"]["timeline"]
+        if event["type"] == "MILESTONE"
+    ]
+    final_feed_keys = [
+        (event["absolute_minute"], event["text"])
+        for event in responses[-1]["presentation_feed"]
+        if event["type"] == "MILESTONE"
+    ]
+
+    session.state_payload()
+
+    assert session.controller.state == finalized_state
+    assert len(milestone_keys) == len(set(milestone_keys)) == 8
+    assert final_feed_keys == milestone_keys
 
 
 def test_stoppage_time_clock_format_is_valid() -> None:
@@ -54,9 +115,9 @@ def test_stoppage_time_clock_format_is_valid() -> None:
 
 
 def test_same_seed_reproduces_timeline_and_different_seeds_can_vary() -> None:
-    first = WebMatchSession(seed=7).start()["playback"]["timeline"]
-    repeated = WebMatchSession(seed=7).start()["playback"]["timeline"]
-    different = WebMatchSession(seed=8).start()["playback"]["timeline"]
+    first = _selected_session(seed=7).start()["playback"]["timeline"]
+    repeated = _selected_session(seed=7).start()["playback"]["timeline"]
+    different = _selected_session(seed=8).start()["playback"]["timeline"]
 
     assert first == repeated
     assert first != different
@@ -66,7 +127,7 @@ def test_presentation_event_count_is_not_fixed_per_block() -> None:
     counts = {
         sum(
             event["kind"] == "PRESENTATION" and event["type"] != "QUIET_MATCH"
-            for event in WebMatchSession(seed=seed).start()["playback"]["timeline"]
+            for event in _selected_session(seed=seed).start()["playback"]["timeline"]
         )
         for seed in range(10)
     }
@@ -75,7 +136,7 @@ def test_presentation_event_count_is_not_fixed_per_block() -> None:
 
 
 def test_timeline_building_does_not_change_finalized_match_state() -> None:
-    session = WebMatchSession(seed=11)
+    session = _selected_session(seed=11)
     response = session.start()
     finalized_state = session.controller.state.model_copy(deep=True)
 
@@ -129,7 +190,7 @@ def test_narration_has_variety_and_contextual_goal_messages() -> None:
 
 def test_presentation_categories_do_not_expand_domain_event_types() -> None:
     domain_types = {event_type.value for event_type in MatchEventType}
-    timeline = WebMatchSession(seed=0).start()["playback"]["timeline"]
+    timeline = _selected_session(seed=0).start()["playback"]["timeline"]
     presentation_types = {
         event["type"] for event in timeline if event["kind"] == "PRESENTATION"
     }

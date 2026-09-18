@@ -1,18 +1,32 @@
+import os
+import sys
+import webbrowser
 from pathlib import Path
 from threading import Thread
 from time import monotonic, sleep
 from urllib.error import URLError
 from urllib.request import urlopen
-import sys
-import webbrowser
 
 import uvicorn
+from dotenv import load_dotenv
 
-VERSION = "0.1.0"
+from app.version import APP_VERSION
+
 HOST = "127.0.0.1"
 PORT = 8000
 URL = f"http://{HOST}:{PORT}"
 PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+def _provider_configuration_summary() -> tuple[str, str]:
+    """Return non-sensitive local provider availability labels."""
+    groq_configured = bool(os.getenv("GROQ_API_KEY", "").strip())
+    gemini_configured = bool(os.getenv("GEMINI_API_KEY", "").strip())
+    return (
+        f"Groq: {'configured' if groq_configured else 'not configured'}",
+        "Gemini fallback: "
+        f"{'configured' if gemini_configured else 'not configured'}",
+    )
 
 
 def _open_browser_when_ready(server: uvicorn.Server, timeout: float = 15.0) -> None:
@@ -35,7 +49,11 @@ def _open_browser_when_ready(server: uvicorn.Server, timeout: float = 15.0) -> N
 
 def main() -> None:
     sys.path.insert(0, str(PROJECT_ROOT))
-    print(f"AI Football Agentic v{VERSION}\n")
+    load_dotenv(PROJECT_ROOT / ".env")
+    print(f"AI Football Agentic v{APP_VERSION}\n")
+    for provider_status in _provider_configuration_summary():
+        print(provider_status)
+    print()
     print("Starting server...")
     config = uvicorn.Config(
         "app.main:app",
